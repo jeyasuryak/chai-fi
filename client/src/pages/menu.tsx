@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ShoppingCart, Plus, Minus } from "lucide-react";
+import { ShoppingCart, Plus, Minus, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { MenuItem, CartItem } from "@shared/schema";
@@ -82,20 +82,31 @@ export default function MenuPage() {
             <h1 className="text-3xl font-bold text-secondary" data-testid="menu-title">Menu</h1>
             <p className="text-muted-foreground" data-testid="menu-subtitle">Select items to add to your order</p>
           </div>
-          <Button 
-            onClick={goToPayment}
-            className="relative bg-primary text-primary-foreground px-6 py-3 rounded-lg font-semibold hover:bg-accent transition-colors"
-            disabled={cartCount === 0}
-            data-testid="button-cart"
-          >
-            <ShoppingCart className="mr-2" size={20} />
-            Cart
-            {cartCount > 0 && (
-              <Badge className="cart-badge absolute -top-2 -right-2 w-6 h-6 text-xs rounded-full flex items-center justify-center text-white" data-testid="cart-count">
-                {cartCount}
-              </Badge>
-            )}
-          </Button>
+          <div className="flex gap-3">
+            <Button 
+              onClick={() => navigate("/dashboard")}
+              variant="outline"
+              className="px-6 py-3 rounded-lg font-semibold hover:bg-secondary hover:text-secondary-foreground transition-colors"
+              data-testid="button-dashboard"
+            >
+              <BarChart3 className="mr-2" size={20} />
+              Dashboard
+            </Button>
+            <Button 
+              onClick={goToPayment}
+              className="relative bg-primary text-primary-foreground px-6 py-3 rounded-lg font-semibold hover:bg-accent transition-colors"
+              disabled={cartCount === 0}
+              data-testid="button-cart"
+            >
+              <ShoppingCart className="mr-2" size={20} />
+              Cart
+              {cartCount > 0 && (
+                <Badge className="cart-badge absolute -top-2 -right-2 w-6 h-6 text-xs rounded-full flex items-center justify-center text-white" data-testid="cart-count">
+                  {cartCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* Menu Categories */}
