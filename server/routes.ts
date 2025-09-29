@@ -31,6 +31,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Menu item sales endpoint - MUST come before /api/menu/:id
+  app.get("/api/menu/sales", async (req, res) => {
+    try {
+      const date = req.query.date as string || new Date().toISOString().split('T')[0];
+      const transactions = await storage.getTransactionsByDate(date);
+      const menuItems = await storage.getMenuItems();
+      
+      const salesData = menuItems.map(item => {
+        const totalSold = transactions.reduce((count, transaction) => {
+          const items = transaction.items as any[];
+          const itemSold = items.find(i => i.id === item.id);
+          return count + (itemSold ? itemSold.quantity : 0);
+        }, 0);
+        
+        return {
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          price: item.price,
+          totalSold,
+          revenue: totalSold * parseFloat(item.price)
+        };
+      });
+      
+      res.json(salesData.sort((a, b) => b.totalSold - a.totalSold));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch menu item sales" });
+    }
+  });
+
   app.get("/api/menu/:id", async (req, res) => {
     try {
       const item = await storage.getMenuItem(req.params.id);
@@ -210,35 +240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Menu item sales endpoint
-  app.get("/api/menu/sales", async (req, res) => {
-    try {
-      const date = req.query.date as string || new Date().toISOString().split('T')[0];
-      const transactions = await storage.getTransactionsByDate(date);
-      const menuItems = await storage.getMenuItems();
-      
-      const salesData = menuItems.map(item => {
-        const totalSold = transactions.reduce((count, transaction) => {
-          const items = transaction.items as any[];
-          const itemSold = items.find(i => i.id === item.id);
-          return count + (itemSold ? itemSold.quantity : 0);
-        }, 0);
-        
-        return {
-          id: item.id,
-          name: item.name,
-          category: item.category,
-          price: item.price,
-          totalSold,
-          revenue: totalSold * parseFloat(item.price)
-        };
-      });
-      
-      res.json(salesData.sort((a, b) => b.totalSold - a.totalSold));
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch menu item sales" });
-    }
-  });
+
 
   // Clear data endpoint
   app.delete("/api/data/clear", async (req, res) => {

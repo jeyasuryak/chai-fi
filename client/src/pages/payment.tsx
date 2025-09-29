@@ -62,12 +62,15 @@ export default function PaymentPage() {
     if (paymentMethod === "split") {
       const gpay = parseFloat(splitGpayAmount) || 0;
       const cash = parseFloat(splitCashAmount) || 0;
-      const total = parseFloat(manualTotal) || 0;
       
-      if (Math.abs((gpay + cash) - total) > 0.01) {
+      // Round both values to 2 decimal places to avoid floating-point precision issues
+      const splitTotal = Math.round((gpay + cash) * 100) / 100;
+      const expectedTotal = Math.round(finalTotal * 100) / 100;
+      
+      if (Math.abs(splitTotal - expectedTotal) > 0.01) {
         toast({
           title: "Split payment mismatch",
-          description: "GPay + Cash amounts must equal the total amount.",
+          description: `GPay + Cash amounts (₹${splitTotal.toFixed(2)}) must equal the total amount (₹${expectedTotal.toFixed(2)}).`,
           variant: "destructive",
         });
         return;
@@ -327,27 +330,34 @@ export default function PaymentPage() {
                   {/* Split Payment Summary */}
                   <div className="mt-4 p-3 bg-background rounded border">
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Expected Total:</span>
-                        <span className="font-medium">₹{finalTotal.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>GPay + Cash:</span>
-                        <span className="font-medium">₹{((parseFloat(splitGpayAmount) || 0) + (parseFloat(splitCashAmount) || 0)).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span>Difference:</span>
-                        <span className={`font-medium ${
-                          Math.abs(finalTotal - ((parseFloat(splitGpayAmount) || 0) + (parseFloat(splitCashAmount) || 0))) < 0.01 
-                            ? 'text-green-600' 
-                            : 'text-red-600'
-                        }`}>
-                          ₹{(finalTotal - ((parseFloat(splitGpayAmount) || 0) + (parseFloat(splitCashAmount) || 0))).toFixed(2)}
-                        </span>
-                      </div>
-                      {Math.abs(finalTotal - ((parseFloat(splitGpayAmount) || 0) + (parseFloat(splitCashAmount) || 0))) < 0.01 && (
-                        <div className="text-green-600 text-xs text-center font-medium">✓ Split amounts match total</div>
-                      )}
+                      {(() => {
+                        const expectedTotal = Math.round(finalTotal * 100) / 100;
+                        const splitTotal = Math.round(((parseFloat(splitGpayAmount) || 0) + (parseFloat(splitCashAmount) || 0)) * 100) / 100;
+                        const difference = expectedTotal - splitTotal;
+                        const isMatching = Math.abs(difference) < 0.01;
+                        
+                        return (
+                          <>
+                            <div className="flex justify-between">
+                              <span>Expected Total:</span>
+                              <span className="font-medium">₹{expectedTotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>GPay + Cash:</span>
+                              <span className="font-medium">₹{splitTotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between border-t pt-2">
+                              <span>Difference:</span>
+                              <span className={`font-medium ${isMatching ? 'text-green-600' : 'text-red-600'}`}>
+                                ₹{difference.toFixed(2)}
+                              </span>
+                            </div>
+                            {isMatching && (
+                              <div className="text-green-600 text-xs text-center font-medium">✓ Split amounts match total</div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

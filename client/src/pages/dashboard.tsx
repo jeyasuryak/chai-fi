@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, IndianRupee, Receipt, Trash2, Users, TrendingUp, BarChart3 } from "lucide-react";
+import { Download, IndianRupee, Receipt, Trash2, Users, TrendingUp, BarChart3, ArrowLeft, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from "recharts";
 import { generateDailySummaryPDF, generateWeeklySummaryPDF, generateMonthlySummaryPDF, generateMenuSalesPDF } from "@/lib/pdf";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import type { DailySummary, WeeklySummary, MonthlySummary } from "@shared/schema";
 
 type CreditorSummary = {
@@ -25,8 +26,10 @@ type MenuItemSales = {
 export default function DashboardPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"today" | "week" | "month">("today");
   const [clearPeriod, setClearPeriod] = useState<"day" | "week" | "month">("day");
+  const [chartType, setChartType] = useState<"bar" | "pie">("bar");
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const { data: dailySummaries = [] } = useQuery<DailySummary[]>({
     queryKey: ["/api/summaries/daily"],
@@ -45,7 +48,7 @@ export default function DashboardPage() {
   });
 
   const today = new Date().toISOString().split('T')[0];
-  const { data: menuItemSales = [], isLoading: menuItemSalesLoading, error: menuItemSalesError } = useQuery<MenuItemSales[]>({
+  const { data: menuItemSales = [], isLoading: menuItemSalesLoading, error: menuItemSalesError } = useQuery<any[]>({
     queryKey: ["/api/menu/sales"],
   });
 
@@ -56,11 +59,19 @@ export default function DashboardPage() {
   // Calculate total creditor balance
   const totalCreditorBalance = creditorSummary.reduce((sum, creditor) => sum + creditor.totalAmount, 0);
 
-  // Prepare chart data
-  const chartData = menuItemSales.slice(0, 10).map(item => ({
-    name: item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name,
-    sales: item.count,
-  }));
+  // Prepare chart data with colors
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ff0000', '#0000ff', '#ffff00'];
+  
+  const chartData = menuItemSales
+    .filter(item => item.totalSold > 0) // Only show items with sales
+    .slice(0, 10)
+    .map((item, index) => ({
+      name: item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name,
+      fullName: item.name,
+      count: item.totalSold || 0,
+      revenue: item.revenue || 0,
+      color: COLORS[index % COLORS.length],
+    }));
 
   const chartConfig = {
     sales: {
@@ -159,7 +170,13 @@ export default function DashboardPage() {
     }
     
     try {
-      await generateMenuSalesPDF(menuItemSales);
+      // Transform the data to match the expected format for PDF generation
+      const transformedData = menuItemSales.map(item => ({
+        name: item.name,
+        count: item.totalSold || 0
+      }));
+      
+      await generateMenuSalesPDF(transformedData);
       toast({
         title: "PDF Downloaded",
         description: "Menu sales report has been downloaded successfully",
@@ -179,6 +196,15 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-4">
+            <Button 
+              onClick={() => navigate("/menu")}
+              variant="outline"
+              size="sm"
+              className="px-4 py-2 rounded-lg font-semibold hover:bg-secondary hover:text-secondary-foreground transition-colors"
+            >
+              <ArrowLeft className="mr-2" size={16} />
+              Back to Menu
+            </Button>
             <div>
               <h1 className="text-3xl font-bold text-secondary" data-testid="dashboard-title">Dashboard</h1>
               <p className="text-muted-foreground" data-testid="dashboard-subtitle">Transaction summaries and analytics</p>
@@ -541,6 +567,14 @@ export default function DashboardPage() {
                 <h2 className="text-xl font-semibold text-secondary">Today's Menu Sales</h2>
                 <div className="flex items-center gap-3">
                   <Button 
+                    onClick={() => navigate("/menu")}
+                    variant="outline"
+                    className="px-4 py-2 rounded-lg text-sm hover:bg-secondary hover:text-secondary-foreground transition-colors"
+                  >
+                    <Menu className="mr-2" size={16} />
+                    View Menu
+                  </Button>
+                  <Button 
                     onClick={handleDownloadMenuSales}
                     className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm hover:bg-accent transition-colors"
                     disabled={!menuItemSales || menuItemSales.length === 0}
@@ -575,7 +609,7 @@ export default function DashboardPage() {
                             <TableRow key={index}>
                               <TableCell className="font-medium">{item.name}</TableCell>
                               <TableCell className="text-right font-bold text-purple-600">
-                                {item.count}
+                                {item.totalSold || 0}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -596,39 +630,144 @@ export default function DashboardPage() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-secondary">Sales Visualization</h2>
-                <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="text-green-600 text-xl" />
+                <h2 className="text-xl font-semibold text-secondary">Individual Menu Item Sales</h2>
+                <div className="flex items-center gap-3">
+                  <Select value={chartType} onValueChange={(value: "bar" | "pie") => setChartType(value)}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bar">Bar Chart</SelectItem>
+                      <SelectItem value="pie">Pie Chart</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
+                    <TrendingUp className="text-green-600 text-xl" />
+                  </div>
                 </div>
               </div>
               
               {menuItemSalesLoading ? (
-                <div className="text-center py-4">Loading chart data...</div>
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">Loading sales data...</p>
+                </div>
               ) : menuItemSalesError ? (
-                <div className="text-center py-4 text-red-600">Error loading chart data</div>
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-red-600 text-2xl">⚠️</span>
+                  </div>
+                  <p className="text-red-600 font-medium">Error loading sales data</p>
+                  <p className="text-sm text-muted-foreground mt-2">Please try refreshing the page</p>
+                </div>
               ) : (
-                <div className="h-64">
-                  {menuItemSales && menuItemSales.length > 0 ? (
+                <div className="h-80">
+                  {chartData && chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={menuItemSales} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="name" 
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                          fontSize={12}
-                        />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="#8884d8" />
-                      </BarChart>
+                      {chartType === "bar" ? (
+                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis 
+                            dataKey="name" 
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            fontSize={11}
+                            interval={0}
+                          />
+                          <YAxis fontSize={12} />
+                          <Tooltip 
+                            formatter={(value, name, props) => [
+                              `${value} sold`,
+                              props.payload.fullName
+                            ]}
+                            labelFormatter={(label) => `Item: ${label}`}
+                            contentStyle={{
+                              backgroundColor: 'white',
+                              border: '1px solid #ccc',
+                              borderRadius: '8px',
+                              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                            }}
+                          />
+                          <Bar 
+                            dataKey="count" 
+                            fill="#8884d8"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      ) : (
+                        <PieChart>
+                          <Pie
+                            data={chartData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, count, percent }) => 
+                              `${name}: ${count} (${(percent * 100).toFixed(1)}%)`
+                            }
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="count"
+                          >
+                            {chartData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            formatter={(value, name, props) => [
+                              `${value} sold`,
+                              props.payload.fullName
+                            ]}
+                            contentStyle={{
+                              backgroundColor: 'white',
+                              border: '1px solid #ccc',
+                              borderRadius: '8px',
+                              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                            }}
+                          />
+                          <Legend />
+                        </PieChart>
+                      )}
                     </ResponsiveContainer>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      No data to display
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                        <BarChart3 className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-lg font-medium">No sales data available</p>
+                      <p className="text-sm mt-2">Start selling items to see the visualization</p>
                     </div>
                   )}
+                </div>
+              )}
+              
+              {/* Sales Summary */}
+              {chartData && chartData.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-primary">{chartData.length}</p>
+                      <p className="text-sm text-muted-foreground">Items Sold</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-green-600">
+                        {chartData.reduce((sum, item) => sum + item.count, 0)}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Total Quantity</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-blue-600">
+                        ₹{chartData.reduce((sum, item) => sum + item.revenue, 0).toFixed(2)}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Total Revenue</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-purple-600">
+                        ₹{chartData.length > 0 ? (chartData.reduce((sum, item) => sum + item.revenue, 0) / chartData.reduce((sum, item) => sum + item.count, 0)).toFixed(2) : '0.00'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Avg. Price</p>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -650,6 +789,26 @@ export default function DashboardPage() {
                 <strong>Setup Instructions:</strong> Configure your MongoDB Atlas connection string in the environment variables. 
                 All daily, weekly, and monthly summaries are generated from real transaction data.
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Powered by Innowara */}
+        <div className="mt-8 flex justify-center items-center">
+          <div className="bg-white rounded-xl shadow-sm border border-border p-4 flex items-center gap-3">
+            <img 
+              src="/logo.png" 
+              alt="Innowara Logo" 
+              className="w-12 h-12 object-contain"
+              onError={(e) => {
+                // Fallback if image doesn't load
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Powered by</p>
+              <p className="font-semibold text-primary">Innowara</p>
+              <p className="text-xs text-muted-foreground">IT Solutions - Web & Mobile Apps</p>
             </div>
           </div>
         </div>

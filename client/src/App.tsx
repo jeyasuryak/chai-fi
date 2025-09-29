@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import SplashPage from "@/pages/splash";
 import LoginPage from "@/pages/login";
 import MenuPage from "@/pages/menu";
+import SearchPage from "@/pages/search";
 import PaymentPage from "@/pages/payment";
 import CreditorPage from "@/pages/creditor";
 import InvoicePage from "@/pages/invoice";
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/menu" component={MenuPage} />
+      <Route path="/search" component={SearchPage} />
       <Route path="/payment" component={PaymentPage} />
       <Route path="/creditor" component={CreditorPage} />
       <Route path="/invoice" component={InvoicePage} />
