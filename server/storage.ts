@@ -195,7 +195,11 @@ export class MemStorage implements IStorage {
     const transaction: Transaction = { 
       ...insertTransaction, 
       id,
-      createdAt: now
+      createdAt: now,
+      billerName: insertTransaction.billerName || 'Sriram',
+      extras: insertTransaction.extras || null,
+      splitPayment: insertTransaction.splitPayment || null,
+      creditor: insertTransaction.creditor || null
     };
     this.transactions.set(id, transaction);
 
@@ -302,8 +306,9 @@ export class MemStorage implements IStorage {
     } else if (transaction.paymentMethod === 'cash') {
       cashAmount = parseFloat(transaction.totalAmount);
     } else if (transaction.paymentMethod === 'split' && transaction.splitPayment) {
-      gpayAmount = transaction.splitPayment.gpayAmount || 0;
-      cashAmount = transaction.splitPayment.cashAmount || 0;
+      const splitData = transaction.splitPayment as any;
+      gpayAmount = splitData.gpayAmount || 0;
+      cashAmount = splitData.cashAmount || 0;
     }
 
     // Update daily summary
@@ -695,7 +700,11 @@ class MongoStorage implements IStorage {
     const transaction: Transaction = { 
       ...insertTransaction, 
       id,
-      createdAt: now
+      createdAt: now,
+      billerName: insertTransaction.billerName || 'Sriram',
+      extras: insertTransaction.extras || null,
+      splitPayment: insertTransaction.splitPayment || null,
+      creditor: insertTransaction.creditor || null
     };
     
     await this.db.collection('transactions').insertOne(transaction);
@@ -799,20 +808,35 @@ class MongoStorage implements IStorage {
   }
 
   private async updateSummaries(transaction: Transaction): Promise<void> {
-    const gpayAmount = transaction.paymentMethod === 'gpay' ? parseFloat(transaction.totalAmount) : 0;
-    const cashAmount = transaction.paymentMethod === 'cash' ? parseFloat(transaction.totalAmount) : 0;
+    let gpayAmount = 0;
+    let cashAmount = 0;
+
+    if (transaction.paymentMethod === 'gpay') {
+      gpayAmount = parseFloat(transaction.totalAmount);
+    } else if (transaction.paymentMethod === 'cash') {
+      cashAmount = parseFloat(transaction.totalAmount);
+    } else if (transaction.paymentMethod === 'split' && transaction.splitPayment) {
+      const splitData = transaction.splitPayment as any;
+      gpayAmount = splitData.gpayAmount || 0;
+      cashAmount = splitData.cashAmount || 0;
+    }
 
     // Update daily summary
     const existingDaily = await this.getDailySummary(transaction.date);
     if (existingDaily) {
+      const newTotalAmount = (parseFloat(existingDaily.totalAmount.toString()) + parseFloat(transaction.totalAmount)).toFixed(2);
+      const newGpayAmount = (parseFloat(existingDaily.gpayAmount.toString()) + gpayAmount).toFixed(2);
+      const newCashAmount = (parseFloat(existingDaily.cashAmount.toString()) + cashAmount).toFixed(2);
+      const newOrderCount = existingDaily.orderCount + 1;
+      
       await this.db.collection('daily_summaries').updateOne(
         { date: transaction.date },
         {
-          $inc: {
-            totalAmount: parseFloat(transaction.totalAmount),
-            gpayAmount: gpayAmount,
-            cashAmount: cashAmount,
-            orderCount: 1
+          $set: {
+            totalAmount: newTotalAmount,
+            gpayAmount: newGpayAmount,
+            cashAmount: newCashAmount,
+            orderCount: newOrderCount
           }
         }
       );
@@ -832,14 +856,19 @@ class MongoStorage implements IStorage {
     const existingWeekly = await this.getWeeklySummary(weekStart);
     
     if (existingWeekly) {
+      const newTotalAmount = (parseFloat(existingWeekly.totalAmount.toString()) + parseFloat(transaction.totalAmount)).toFixed(2);
+      const newGpayAmount = (parseFloat(existingWeekly.gpayAmount.toString()) + gpayAmount).toFixed(2);
+      const newCashAmount = (parseFloat(existingWeekly.cashAmount.toString()) + cashAmount).toFixed(2);
+      const newOrderCount = existingWeekly.orderCount + 1;
+      
       await this.db.collection('weekly_summaries').updateOne(
         { weekStart },
         {
-          $inc: {
-            totalAmount: parseFloat(transaction.totalAmount),
-            gpayAmount: gpayAmount,
-            cashAmount: cashAmount,
-            orderCount: 1
+          $set: {
+            totalAmount: newTotalAmount,
+            gpayAmount: newGpayAmount,
+            cashAmount: newCashAmount,
+            orderCount: newOrderCount
           }
         }
       );
@@ -858,14 +887,19 @@ class MongoStorage implements IStorage {
     const existingMonthly = await this.getMonthlySummary(month);
     
     if (existingMonthly) {
+      const newTotalAmount = (parseFloat(existingMonthly.totalAmount.toString()) + parseFloat(transaction.totalAmount)).toFixed(2);
+      const newGpayAmount = (parseFloat(existingMonthly.gpayAmount.toString()) + gpayAmount).toFixed(2);
+      const newCashAmount = (parseFloat(existingMonthly.cashAmount.toString()) + cashAmount).toFixed(2);
+      const newOrderCount = existingMonthly.orderCount + 1;
+      
       await this.db.collection('monthly_summaries').updateOne(
         { month },
         {
-          $inc: {
-            totalAmount: parseFloat(transaction.totalAmount),
-            gpayAmount: gpayAmount,
-            cashAmount: cashAmount,
-            orderCount: 1
+          $set: {
+            totalAmount: newTotalAmount,
+            gpayAmount: newGpayAmount,
+            cashAmount: newCashAmount,
+            orderCount: newOrderCount
           }
         }
       );
