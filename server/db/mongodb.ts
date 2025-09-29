@@ -190,7 +190,11 @@ export class MongoStorage implements IStorage {
 
   async createMenuItem(insertItem: InsertMenuItem): Promise<MenuItem> {
     const id = new Date().getTime().toString();
-    const item: MenuItem = { ...insertItem, id };
+    const item: MenuItem = { 
+      ...insertItem, 
+      id,
+      available: insertItem.available ?? true 
+    };
     await this.menuItems.insertOne(item);
     return item;
   }
@@ -211,7 +215,11 @@ export class MongoStorage implements IStorage {
     const transaction: Transaction = { 
       ...insertTransaction, 
       id,
-      createdAt: now
+      createdAt: now,
+      billerName: insertTransaction.billerName || 'Sriram',
+      extras: insertTransaction.extras || null,
+      splitPayment: insertTransaction.splitPayment || null,
+      creditor: insertTransaction.creditor || null
     };
     
     await this.transactions.insertOne(transaction);
@@ -326,8 +334,9 @@ export class MongoStorage implements IStorage {
     } else if (transaction.paymentMethod === 'cash') {
       cashAmount = parseFloat(transaction.totalAmount);
     } else if (transaction.paymentMethod === 'split' && transaction.splitPayment) {
-      gpayAmount = transaction.splitPayment.gpayAmount || 0;
-      cashAmount = transaction.splitPayment.cashAmount || 0;
+      const splitData = transaction.splitPayment as any;
+      gpayAmount = splitData.gpayAmount || 0;
+      cashAmount = splitData.cashAmount || 0;
     }
 
     // Update daily summary
