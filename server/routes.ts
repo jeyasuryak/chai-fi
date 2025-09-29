@@ -4,73 +4,86 @@ import { storage } from "./storage";
 import { insertTransactionSchema } from "@shared/schema";
 import { z } from "zod";
 
-// Helper function to wait for storage initialization
-async function waitForStorage() {
+// Helper function to wait for storage initialization with timeout
+async function waitForStorage(timeoutMs = 5000) {
+  const startTime = Date.now();
   let attempts = 0;
-  while (!storage && attempts < 50) {
+  
+  while (!storage && (Date.now() - startTime) < timeoutMs && attempts < 50) {
     await new Promise(resolve => setTimeout(resolve, 100));
     attempts++;
   }
+  
+  if (!storage) {
+    console.error(`Storage initialization failed after ${attempts} attempts in ${Date.now() - startTime}ms`);
+    throw new Error('Storage initialization timeout');
+  }
+  
   return storage;
+}
+
+// Wrapper function to handle API errors consistently
+function asyncHandler(fn: Function) {
+  return (req: any, res: any, next: any) => {
+    Promise.resolve(fn(req, res, next)).catch((error) => {
+      console.error('API Error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: 'Internal server error',
+          message: error.message || 'An unexpected error occurred',
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+  };
 }
 
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
-  app.get("/api/health", async (req, res) => {
+  app.get("/api/health", asyncHandler(async (req, res) => {
     try {
-      const storageInstance = await waitForStorage();
+      const storageInstance = await waitForStorage(2000); // Shorter timeout for health check
       res.json({ 
         status: "ok", 
         storage: storageInstance ? "connected" : "unavailable",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'production'
       });
     } catch (error) {
-      res.status(500).json({ 
+      res.status(503).json({ 
         status: "error", 
-        storage: "error",
+        storage: "initialization_failed",
+        error: error.message,
         timestamp: new Date().toISOString()
       });
     }
-  });
+  }));
 
   // Authentication
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const { username, password } = req.body;
-      
-      const storageInstance = await waitForStorage();
-      if (!storageInstance) {
-        return res.status(503).json({ error: "Service temporarily unavailable" });
-      }
-      
-      const user = await storageInstance.getUserByUsername(username);
-      
-      if (!user || user.password !== password) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-
-      res.json({ user: { id: user.id, username: user.username } });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: "Login failed" });
+  app.post("/api/auth/login", asyncHandler(async (req, res) => {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password are required" });
     }
-  });
+    
+    const storageInstance = await waitForStorage();
+    const user = await storageInstance.getUserByUsername(username);
+    
+    if (!user || user.password !== password) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    res.json({ user: { id: user.id, username: user.username } });
+  }));
 
   // Menu Items
-  app.get("/api/menu", async (req, res) => {
-    try {
-      const storageInstance = await waitForStorage();
-      if (!storageInstance) {
-        return res.status(503).json({ error: "Service temporarily unavailable" });
-      }
-      
-      const items = await storageInstance.getMenuItems();
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch menu items" });
-    }
-  });
+  app.get("/api/menu", asyncHandler(async (req, res) => {
+    const storageInstance = await waitForStorage();
+    const items = await storageInstance.getMenuItems();
+    res.json(items);
+  }));
 
   // Menu item sales endpoint - MUST come before /api/menu/:id
   app.get("/api/menu/sales", async (req, res) => {

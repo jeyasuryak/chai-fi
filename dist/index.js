@@ -879,60 +879,69 @@ var extrasSchema = z.array(
 
 // server/routes.ts
 import { z as z2 } from "zod";
-async function waitForStorage() {
+async function waitForStorage(timeoutMs = 5e3) {
+  const startTime = Date.now();
   let attempts = 0;
-  while (!storage && attempts < 50) {
+  while (!storage && Date.now() - startTime < timeoutMs && attempts < 50) {
     await new Promise((resolve) => setTimeout(resolve, 100));
     attempts++;
   }
+  if (!storage) {
+    console.error(`Storage initialization failed after ${attempts} attempts in ${Date.now() - startTime}ms`);
+    throw new Error("Storage initialization timeout");
+  }
   return storage;
 }
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch((error) => {
+      console.error("API Error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: "Internal server error",
+          message: error.message || "An unexpected error occurred",
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+    });
+  };
+}
 async function registerRoutes(app2) {
-  app2.get("/api/health", async (req, res) => {
+  app2.get("/api/health", asyncHandler(async (req, res) => {
     try {
-      const storageInstance2 = await waitForStorage();
+      const storageInstance2 = await waitForStorage(2e3);
       res.json({
         status: "ok",
         storage: storageInstance2 ? "connected" : "unavailable",
-        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        environment: process.env.NODE_ENV || "production"
       });
     } catch (error) {
-      res.status(500).json({
+      res.status(503).json({
         status: "error",
-        storage: "error",
+        storage: "initialization_failed",
+        error: error.message,
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
     }
-  });
-  app2.post("/api/auth/login", async (req, res) => {
-    try {
-      const { username, password } = req.body;
-      const storageInstance2 = await waitForStorage();
-      if (!storageInstance2) {
-        return res.status(503).json({ error: "Service temporarily unavailable" });
-      }
-      const user = await storageInstance2.getUserByUsername(username);
-      if (!user || user.password !== password) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-      res.json({ user: { id: user.id, username: user.username } });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: "Login failed" });
+  }));
+  app2.post("/api/auth/login", asyncHandler(async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password are required" });
     }
-  });
-  app2.get("/api/menu", async (req, res) => {
-    try {
-      const storageInstance2 = await waitForStorage();
-      if (!storageInstance2) {
-        return res.status(503).json({ error: "Service temporarily unavailable" });
-      }
-      const items = await storageInstance2.getMenuItems();
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch menu items" });
+    const storageInstance2 = await waitForStorage();
+    const user = await storageInstance2.getUserByUsername(username);
+    if (!user || user.password !== password) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
-  });
+    res.json({ user: { id: user.id, username: user.username } });
+  }));
+  app2.get("/api/menu", asyncHandler(async (req, res) => {
+    const storageInstance2 = await waitForStorage();
+    const items = await storageInstance2.getMenuItems();
+    res.json(items);
+  }));
   app2.get("/api/menu/sales", async (req, res) => {
     try {
       const storageInstance2 = await waitForStorage();
