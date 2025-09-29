@@ -8,6 +8,408 @@ import { createServer } from "http";
 // server/storage.ts
 import dotenv from "dotenv";
 import { randomUUID } from "crypto";
+
+// server/db/mongodb.ts
+import { MongoClient } from "mongodb";
+var MongoStorage = class {
+  client;
+  db;
+  users;
+  menuItems;
+  transactions;
+  dailySummaries;
+  weeklySummaries;
+  monthlySummaries;
+  isConnected = false;
+  constructor(connectionString, databaseName = "chai-fi") {
+    this.client = new MongoClient(connectionString);
+    this.db = this.client.db(databaseName);
+    this.users = this.db.collection("users");
+    this.menuItems = this.db.collection("menu_items");
+    this.transactions = this.db.collection("transactions");
+    this.dailySummaries = this.db.collection("daily_summaries");
+    this.weeklySummaries = this.db.collection("weekly_summaries");
+    this.monthlySummaries = this.db.collection("monthly_summaries");
+  }
+  async connect() {
+    if (!this.isConnected) {
+      await this.client.connect();
+      this.isConnected = true;
+      console.log("Connected to MongoDB Atlas");
+      await this.initializeDefaultData();
+    }
+  }
+  async disconnect() {
+    if (this.isConnected) {
+      await this.client.close();
+      this.isConnected = false;
+      console.log("Disconnected from MongoDB Atlas");
+    }
+  }
+  async initializeDefaultData() {
+    const existingAdmin = await this.users.findOne({ username: "admin" });
+    if (!existingAdmin) {
+      await this.createUser({ username: "admin", password: "admin@2020" });
+    }
+    const existingUser = await this.users.findOne({ username: "Chai-fi" });
+    if (!existingUser) {
+      await this.createUser({ username: "Chai-fi", password: "Chai-fi@2025" });
+    }
+    const menuCount = await this.menuItems.countDocuments();
+    if (menuCount === 0) {
+      await this.initializeMenuItems();
+    }
+    await this.createIndexes();
+  }
+  async createIndexes() {
+    await this.users.createIndex({ username: 1 }, { unique: true });
+    await this.transactions.createIndex({ date: 1 });
+    await this.transactions.createIndex({ createdAt: -1 });
+    await this.dailySummaries.createIndex({ date: 1 }, { unique: true });
+    await this.weeklySummaries.createIndex({ weekStart: 1 }, { unique: true });
+    await this.monthlySummaries.createIndex({ month: 1 }, { unique: true });
+  }
+  async initializeMenuItems() {
+    const defaultItems = [
+      {
+        name: "Masala Chai",
+        description: "Traditional spiced tea",
+        price: "25.00",
+        category: "Tea",
+        image: "https://images.unsplash.com/photo-1571934811356-5cc061b6821f?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      },
+      {
+        name: "Green Tea",
+        description: "Healthy herbal tea",
+        price: "30.00",
+        category: "Tea",
+        image: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      },
+      {
+        name: "Cappuccino",
+        description: "Rich coffee with foam",
+        price: "80.00",
+        category: "Coffee",
+        image: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      },
+      {
+        name: "Black Coffee",
+        description: "Strong black coffee",
+        price: "50.00",
+        category: "Coffee",
+        image: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      },
+      {
+        name: "Samosa",
+        description: "Crispy fried snack",
+        price: "20.00",
+        category: "Snacks",
+        image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      },
+      {
+        name: "Veg Sandwich",
+        description: "Fresh vegetable sandwich",
+        price: "60.00",
+        category: "Snacks",
+        image: "https://images.unsplash.com/photo-1509722747041-616f39b57569?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      },
+      {
+        name: "Orange Juice",
+        description: "Fresh squeezed orange",
+        price: "40.00",
+        category: "Beverages",
+        image: "https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      },
+      {
+        name: "Mango Lassi",
+        description: "Sweet yogurt drink",
+        price: "45.00",
+        category: "Beverages",
+        image: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
+        available: true
+      }
+    ];
+    for (const item of defaultItems) {
+      await this.createMenuItem(item);
+    }
+  }
+  // Users
+  async getUser(id) {
+    const user = await this.users.findOne({ id });
+    return user || void 0;
+  }
+  async getUserByUsername(username) {
+    const user = await this.users.findOne({ username });
+    return user || void 0;
+  }
+  async createUser(insertUser) {
+    const id = (/* @__PURE__ */ new Date()).getTime().toString();
+    const user = { ...insertUser, id };
+    await this.users.insertOne(user);
+    return user;
+  }
+  // Menu Items
+  async getMenuItems() {
+    return await this.menuItems.find({}).toArray();
+  }
+  async getMenuItem(id) {
+    const item = await this.menuItems.findOne({ id });
+    return item || void 0;
+  }
+  async createMenuItem(insertItem) {
+    const id = (/* @__PURE__ */ new Date()).getTime().toString();
+    const item = {
+      ...insertItem,
+      id,
+      available: insertItem.available ?? true
+    };
+    await this.menuItems.insertOne(item);
+    return item;
+  }
+  async updateMenuItem(id, updateData) {
+    const result = await this.menuItems.findOneAndUpdate(
+      { id },
+      { $set: updateData },
+      { returnDocument: "after" }
+    );
+    return result || void 0;
+  }
+  // Transactions
+  async createTransaction(insertTransaction) {
+    const id = (/* @__PURE__ */ new Date()).getTime().toString();
+    const now = /* @__PURE__ */ new Date();
+    const transaction = {
+      ...insertTransaction,
+      id,
+      createdAt: now,
+      billerName: insertTransaction.billerName || "Sriram",
+      extras: insertTransaction.extras || null,
+      splitPayment: insertTransaction.splitPayment || null,
+      creditor: insertTransaction.creditor || null
+    };
+    await this.transactions.insertOne(transaction);
+    await this.updateSummaries(transaction);
+    return transaction;
+  }
+  async getTransactions(limit) {
+    const query = this.transactions.find({}).sort({ createdAt: -1 });
+    if (limit) query.limit(limit);
+    return await query.toArray();
+  }
+  async getTransactionsByDate(date) {
+    return await this.transactions.find({ date }).sort({ createdAt: -1 }).toArray();
+  }
+  async getTransactionsByDateRange(startDate, endDate) {
+    return await this.transactions.find({
+      date: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    }).sort({ createdAt: -1 }).toArray();
+  }
+  // Daily Summaries
+  async createDailySummary(insertSummary) {
+    const id = (/* @__PURE__ */ new Date()).getTime().toString();
+    const summary = {
+      ...insertSummary,
+      id,
+      createdAt: /* @__PURE__ */ new Date()
+    };
+    await this.dailySummaries.insertOne(summary);
+    return summary;
+  }
+  async getDailySummary(date) {
+    const summary = await this.dailySummaries.findOne({ date });
+    return summary || void 0;
+  }
+  async getDailySummaries(limit) {
+    const query = this.dailySummaries.find({}).sort({ date: -1 });
+    if (limit) query.limit(limit);
+    return await query.toArray();
+  }
+  // Weekly Summaries
+  async createWeeklySummary(insertSummary) {
+    const id = (/* @__PURE__ */ new Date()).getTime().toString();
+    const summary = {
+      ...insertSummary,
+      id,
+      createdAt: /* @__PURE__ */ new Date()
+    };
+    await this.weeklySummaries.insertOne(summary);
+    return summary;
+  }
+  async getWeeklySummary(weekStart) {
+    const summary = await this.weeklySummaries.findOne({ weekStart });
+    return summary || void 0;
+  }
+  async getWeeklySummaries(limit) {
+    const query = this.weeklySummaries.find({}).sort({ weekStart: -1 });
+    if (limit) query.limit(limit);
+    return await query.toArray();
+  }
+  // Monthly Summaries
+  async createMonthlySummary(insertSummary) {
+    const id = (/* @__PURE__ */ new Date()).getTime().toString();
+    const summary = {
+      ...insertSummary,
+      id,
+      createdAt: /* @__PURE__ */ new Date()
+    };
+    await this.monthlySummaries.insertOne(summary);
+    return summary;
+  }
+  async getMonthlySummary(month) {
+    const summary = await this.monthlySummaries.findOne({ month });
+    return summary || void 0;
+  }
+  async getMonthlySummaries(limit) {
+    const query = this.monthlySummaries.find({}).sort({ month: -1 });
+    if (limit) query.limit(limit);
+    return await query.toArray();
+  }
+  async updateSummaries(transaction) {
+    let gpayAmount = 0;
+    let cashAmount = 0;
+    if (transaction.paymentMethod === "gpay") {
+      gpayAmount = parseFloat(transaction.totalAmount);
+    } else if (transaction.paymentMethod === "cash") {
+      cashAmount = parseFloat(transaction.totalAmount);
+    } else if (transaction.paymentMethod === "split" && transaction.splitPayment) {
+      const splitData = transaction.splitPayment;
+      gpayAmount = splitData.gpayAmount || 0;
+      cashAmount = splitData.cashAmount || 0;
+    }
+    const existingDaily = await this.getDailySummary(transaction.date);
+    if (existingDaily) {
+      const newTotalAmount = (parseFloat(existingDaily.totalAmount) + parseFloat(transaction.totalAmount)).toFixed(2);
+      const newGpayAmount = (parseFloat(existingDaily.gpayAmount) + gpayAmount).toFixed(2);
+      const newCashAmount = (parseFloat(existingDaily.cashAmount) + cashAmount).toFixed(2);
+      const newOrderCount = existingDaily.orderCount + 1;
+      await this.dailySummaries.updateOne(
+        { date: transaction.date },
+        {
+          $set: {
+            totalAmount: newTotalAmount,
+            gpayAmount: newGpayAmount,
+            cashAmount: newCashAmount,
+            orderCount: newOrderCount
+          }
+        }
+      );
+    } else {
+      await this.createDailySummary({
+        date: transaction.date,
+        totalAmount: transaction.totalAmount,
+        gpayAmount: gpayAmount.toFixed(2),
+        cashAmount: cashAmount.toFixed(2),
+        orderCount: 1
+      });
+    }
+    const weekStart = this.getWeekStart(new Date(transaction.date));
+    const weekEnd = this.getWeekEnd(new Date(transaction.date));
+    const existingWeekly = await this.getWeeklySummary(weekStart);
+    if (existingWeekly) {
+      const newTotalAmount = (parseFloat(existingWeekly.totalAmount) + parseFloat(transaction.totalAmount)).toFixed(2);
+      const newGpayAmount = (parseFloat(existingWeekly.gpayAmount) + gpayAmount).toFixed(2);
+      const newCashAmount = (parseFloat(existingWeekly.cashAmount) + cashAmount).toFixed(2);
+      const newOrderCount = existingWeekly.orderCount + 1;
+      await this.weeklySummaries.updateOne(
+        { weekStart },
+        {
+          $set: {
+            totalAmount: newTotalAmount,
+            gpayAmount: newGpayAmount,
+            cashAmount: newCashAmount,
+            orderCount: newOrderCount
+          }
+        }
+      );
+    } else {
+      await this.createWeeklySummary({
+        weekStart,
+        weekEnd,
+        totalAmount: transaction.totalAmount,
+        gpayAmount: gpayAmount.toFixed(2),
+        cashAmount: cashAmount.toFixed(2),
+        orderCount: 1
+      });
+    }
+    const month = transaction.date.substring(0, 7);
+    const existingMonthly = await this.getMonthlySummary(month);
+    if (existingMonthly) {
+      const newTotalAmount = (parseFloat(existingMonthly.totalAmount) + parseFloat(transaction.totalAmount)).toFixed(2);
+      const newGpayAmount = (parseFloat(existingMonthly.gpayAmount) + gpayAmount).toFixed(2);
+      const newCashAmount = (parseFloat(existingMonthly.cashAmount) + cashAmount).toFixed(2);
+      const newOrderCount = existingMonthly.orderCount + 1;
+      await this.monthlySummaries.updateOne(
+        { month },
+        {
+          $set: {
+            totalAmount: newTotalAmount,
+            gpayAmount: newGpayAmount,
+            cashAmount: newCashAmount,
+            orderCount: newOrderCount
+          }
+        }
+      );
+    } else {
+      await this.createMonthlySummary({
+        month,
+        totalAmount: transaction.totalAmount,
+        gpayAmount: gpayAmount.toFixed(2),
+        cashAmount: cashAmount.toFixed(2),
+        orderCount: 1
+      });
+    }
+  }
+  getWeekStart(date) {
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(date.setDate(diff));
+    return monday.toISOString().split("T")[0];
+  }
+  getWeekEnd(date) {
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? 0 : 7);
+    const sunday = new Date(date.setDate(diff));
+    return sunday.toISOString().split("T")[0];
+  }
+  // Clear data methods
+  async clearDataByDay(date) {
+    await this.transactions.deleteMany({ date });
+    await this.dailySummaries.deleteOne({ date });
+  }
+  async clearDataByWeek(weekStart) {
+    const weekEnd = this.getWeekEnd(new Date(weekStart));
+    await this.transactions.deleteMany({
+      date: {
+        $gte: weekStart,
+        $lte: weekEnd
+      }
+    });
+    await this.weeklySummaries.deleteOne({ weekStart });
+  }
+  async clearDataByMonth(month) {
+    const startDate = month + "-01";
+    const endDate = month + "-31";
+    await this.transactions.deleteMany({
+      date: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    });
+    await this.monthlySummaries.deleteOne({ month });
+  }
+};
+
+// server/storage.ts
 dotenv.config();
 var MemStorage = class {
   users;
@@ -23,7 +425,7 @@ var MemStorage = class {
     this.dailySummaries = /* @__PURE__ */ new Map();
     this.weeklySummaries = /* @__PURE__ */ new Map();
     this.monthlySummaries = /* @__PURE__ */ new Map();
-    this.createUser({ username: "Inowara", password: "Inowara@2025" });
+    this.createUser({ username: "admin", password: "admin@2020" });
     this.createUser({ username: "Chai-fi", password: "Chai-fi@2025" });
     this.initializeMenuItems();
   }
@@ -122,7 +524,7 @@ var MemStorage = class {
   }
   async createMenuItem(insertItem) {
     const id = randomUUID();
-    const item = { ...insertItem, id };
+    const item = { ...insertItem, id, available: insertItem.available ?? true };
     this.menuItems.set(id, item);
     return item;
   }
@@ -143,8 +545,7 @@ var MemStorage = class {
       createdAt: now,
       billerName: insertTransaction.billerName || "Sriram",
       extras: insertTransaction.extras || null,
-      splitPayment: insertTransaction.splitPayment || null,
-      creditor: insertTransaction.creditor || null
+      splitPayment: insertTransaction.splitPayment || null
     };
     this.transactions.set(id, transaction);
     await this.updateSummaries(transaction);
@@ -281,529 +682,78 @@ var MemStorage = class {
   }
   getWeekStart(date) {
     const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(date.setDate(diff));
-    return monday.toISOString().split("T")[0];
+    const diff = date.getDate() - day;
+    const weekStart = new Date(date.setDate(diff));
+    return weekStart.toISOString().split("T")[0];
   }
   getWeekEnd(date) {
     const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? 0 : 7);
-    const sunday = new Date(date.setDate(diff));
-    return sunday.toISOString().split("T")[0];
+    const diff = date.getDate() - day + 6;
+    const weekEnd = new Date(date.setDate(diff));
+    return weekEnd.toISOString().split("T")[0];
   }
   // Clear data methods
   async clearDataByDay(date) {
     const transactionsToDelete = Array.from(this.transactions.entries()).filter(([_, transaction]) => transaction.date === date).map(([id, _]) => id);
     transactionsToDelete.forEach((id) => this.transactions.delete(id));
     this.dailySummaries.delete(date);
-    await this.recalculateWeeklySummary(date);
-    await this.recalculateMonthlySummary(date);
   }
   async clearDataByWeek(weekStart) {
     const weekEnd = this.getWeekEnd(new Date(weekStart));
     const transactionsToDelete = Array.from(this.transactions.entries()).filter(([_, transaction]) => transaction.date >= weekStart && transaction.date <= weekEnd).map(([id, _]) => id);
     transactionsToDelete.forEach((id) => this.transactions.delete(id));
-    const dailySummariesToDelete = Array.from(this.dailySummaries.entries()).filter(([date, _]) => date >= weekStart && date <= weekEnd).map(([date, _]) => date);
-    dailySummariesToDelete.forEach((date) => this.dailySummaries.delete(date));
     this.weeklySummaries.delete(weekStart);
-    await this.recalculateMonthlySummary(weekStart);
+    const dates = this.getDatesBetween(weekStart, weekEnd);
+    dates.forEach((date) => this.dailySummaries.delete(date));
   }
   async clearDataByMonth(month) {
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
-    const transactionsToDelete = Array.from(this.transactions.entries()).filter(([_, transaction]) => transaction.date.startsWith(month)).map(([id, _]) => id);
+    const transactionsToDelete = Array.from(this.transactions.entries()).filter(([_, transaction]) => transaction.date >= startDate && transaction.date <= endDate).map(([id, _]) => id);
     transactionsToDelete.forEach((id) => this.transactions.delete(id));
-    const dailySummariesToDelete = Array.from(this.dailySummaries.entries()).filter(([date, _]) => date.startsWith(month)).map(([date, _]) => date);
-    dailySummariesToDelete.forEach((date) => this.dailySummaries.delete(date));
-    const weeklySummariesToDelete = Array.from(this.weeklySummaries.entries()).filter(([weekStart, _]) => weekStart.startsWith(month)).map(([weekStart, _]) => weekStart);
-    weeklySummariesToDelete.forEach((weekStart) => this.weeklySummaries.delete(weekStart));
     this.monthlySummaries.delete(month);
+    const dates = this.getDatesBetween(startDate, endDate);
+    dates.forEach((date) => this.dailySummaries.delete(date));
+    const weeklySummariesToDelete = Array.from(this.weeklySummaries.entries()).filter(([weekStart, _]) => weekStart >= startDate && weekStart <= endDate).map(([weekStart, _]) => weekStart);
+    weeklySummariesToDelete.forEach((weekStart) => this.weeklySummaries.delete(weekStart));
   }
-  async recalculateWeeklySummary(date) {
-    const weekStart = this.getWeekStart(new Date(date));
-    const weekEnd = this.getWeekEnd(new Date(date));
-    const weekTransactions = Array.from(this.transactions.values()).filter((t) => t.date >= weekStart && t.date <= weekEnd);
-    if (weekTransactions.length === 0) {
-      this.weeklySummaries.delete(weekStart);
-      return;
+  getDatesBetween(startDate, endDate) {
+    const dates = [];
+    const current = new Date(startDate);
+    const end = new Date(endDate);
+    while (current <= end) {
+      dates.push(current.toISOString().split("T")[0]);
+      current.setDate(current.getDate() + 1);
     }
-    const totalAmount = weekTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const gpayAmount = weekTransactions.filter((t) => t.paymentMethod === "gpay").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const cashAmount = weekTransactions.filter((t) => t.paymentMethod === "cash").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    await this.createWeeklySummary({
-      weekStart,
-      weekEnd,
-      totalAmount: totalAmount.toFixed(2),
-      gpayAmount: gpayAmount.toFixed(2),
-      cashAmount: cashAmount.toFixed(2),
-      orderCount: weekTransactions.length
-    });
-  }
-  async recalculateMonthlySummary(date) {
-    const month = date.substring(0, 7);
-    const monthTransactions = Array.from(this.transactions.values()).filter((t) => t.date.startsWith(month));
-    if (monthTransactions.length === 0) {
-      this.monthlySummaries.delete(month);
-      return;
-    }
-    const totalAmount = monthTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const gpayAmount = monthTransactions.filter((t) => t.paymentMethod === "gpay").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const cashAmount = monthTransactions.filter((t) => t.paymentMethod === "cash").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    await this.createMonthlySummary({
-      month,
-      totalAmount: totalAmount.toFixed(2),
-      gpayAmount: gpayAmount.toFixed(2),
-      cashAmount: cashAmount.toFixed(2),
-      orderCount: monthTransactions.length
-    });
-  }
-};
-var MongoStorage = class {
-  connectionString;
-  dbName;
-  client;
-  db;
-  isConnected = false;
-  constructor(connectionString, dbName = "chai-fi") {
-    this.connectionString = connectionString;
-    this.dbName = dbName;
-  }
-  async connect() {
-    try {
-      const { MongoClient } = await import("mongodb");
-      this.client = new MongoClient(this.connectionString);
-      await this.client.connect();
-      this.db = this.client.db(this.dbName);
-      this.isConnected = true;
-      console.log("\u2705 Connected to MongoDB Atlas");
-      await this.initializeDefaultData();
-      await this.createIndexes();
-    } catch (error) {
-      console.error("\u274C MongoDB connection failed:", error);
-      throw error;
-    }
-  }
-  async disconnect() {
-    if (this.client && this.isConnected) {
-      await this.client.close();
-      this.isConnected = false;
-      console.log("Disconnected from MongoDB Atlas");
-    }
-  }
-  async initializeDefaultData() {
-    const existingUser = await this.db.collection("users").findOne({ username: "Chai-fi" });
-    if (!existingUser) {
-      await this.createUser({ username: "Chai-fi", password: "Chai-fi@2025" });
-    }
-    const menuCount = await this.db.collection("menu_items").countDocuments();
-    if (menuCount === 0) {
-      await this.initializeMenuItems();
-    }
-  }
-  async createIndexes() {
-    await this.db.collection("users").createIndex({ username: 1 }, { unique: true });
-    await this.db.collection("transactions").createIndex({ date: 1 });
-    await this.db.collection("transactions").createIndex({ createdAt: -1 });
-    await this.db.collection("daily_summaries").createIndex({ date: 1 }, { unique: true });
-    await this.db.collection("weekly_summaries").createIndex({ weekStart: 1 }, { unique: true });
-    await this.db.collection("monthly_summaries").createIndex({ month: 1 }, { unique: true });
-  }
-  async initializeMenuItems() {
-    const defaultItems = [
-      {
-        name: "Masala Chai",
-        description: "Traditional spiced tea",
-        price: "25.00",
-        category: "Tea",
-        image: "https://images.unsplash.com/photo-1571934811356-5cc061b6821f?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      },
-      {
-        name: "Green Tea",
-        description: "Healthy herbal tea",
-        price: "30.00",
-        category: "Tea",
-        image: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      },
-      {
-        name: "Cappuccino",
-        description: "Rich coffee with foam",
-        price: "80.00",
-        category: "Coffee",
-        image: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      },
-      {
-        name: "Black Coffee",
-        description: "Strong black coffee",
-        price: "50.00",
-        category: "Coffee",
-        image: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      },
-      {
-        name: "Samosa",
-        description: "Crispy fried snack",
-        price: "20.00",
-        category: "Snacks",
-        image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      },
-      {
-        name: "Veg Sandwich",
-        description: "Fresh vegetable sandwich",
-        price: "60.00",
-        category: "Snacks",
-        image: "https://images.unsplash.com/photo-1509722747041-616f39b57569?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      },
-      {
-        name: "Orange Juice",
-        description: "Fresh squeezed orange",
-        price: "40.00",
-        category: "Beverages",
-        image: "https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      },
-      {
-        name: "Mango Lassi",
-        description: "Sweet yogurt drink",
-        price: "45.00",
-        category: "Beverages",
-        image: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250",
-        available: true
-      }
-    ];
-    for (const item of defaultItems) {
-      await this.createMenuItem(item);
-    }
-  }
-  // Implementation of all IStorage methods for MongoDB...
-  // (Similar to MemStorage but using MongoDB operations)
-  async getUser(id) {
-    const user = await this.db.collection("users").findOne({ id });
-    return user || void 0;
-  }
-  async getUserByUsername(username) {
-    const user = await this.db.collection("users").findOne({ username });
-    return user || void 0;
-  }
-  async createUser(insertUser) {
-    const id = randomUUID();
-    const user = { ...insertUser, id };
-    await this.db.collection("users").insertOne(user);
-    return user;
-  }
-  async getMenuItems() {
-    return await this.db.collection("menu_items").find({}).toArray();
-  }
-  async getMenuItem(id) {
-    const item = await this.db.collection("menu_items").findOne({ id });
-    return item || void 0;
-  }
-  async createMenuItem(insertItem) {
-    const id = randomUUID();
-    const item = { ...insertItem, id };
-    await this.db.collection("menu_items").insertOne(item);
-    return item;
-  }
-  async updateMenuItem(id, updateData) {
-    const result = await this.db.collection("menu_items").findOneAndUpdate(
-      { id },
-      { $set: updateData },
-      { returnDocument: "after" }
-    );
-    return result || void 0;
-  }
-  async createTransaction(insertTransaction) {
-    const id = randomUUID();
-    const now = /* @__PURE__ */ new Date();
-    const transaction = {
-      ...insertTransaction,
-      id,
-      createdAt: now,
-      billerName: insertTransaction.billerName || "Sriram",
-      extras: insertTransaction.extras || null,
-      splitPayment: insertTransaction.splitPayment || null,
-      creditor: insertTransaction.creditor || null
-    };
-    await this.db.collection("transactions").insertOne(transaction);
-    await this.updateSummaries(transaction);
-    return transaction;
-  }
-  async getTransactions(limit) {
-    const query = this.db.collection("transactions").find({}).sort({ createdAt: -1 });
-    if (limit) query.limit(limit);
-    return await query.toArray();
-  }
-  async getTransactionsByDate(date) {
-    return await this.db.collection("transactions").find({ date }).sort({ createdAt: -1 }).toArray();
-  }
-  async getTransactionsByDateRange(startDate, endDate) {
-    return await this.db.collection("transactions").find({
-      date: {
-        $gte: startDate,
-        $lte: endDate
-      }
-    }).sort({ createdAt: -1 }).toArray();
-  }
-  async createDailySummary(insertSummary) {
-    const id = randomUUID();
-    const summary = {
-      ...insertSummary,
-      id,
-      createdAt: /* @__PURE__ */ new Date()
-    };
-    await this.db.collection("daily_summaries").insertOne(summary);
-    return summary;
-  }
-  async getDailySummary(date) {
-    const summary = await this.db.collection("daily_summaries").findOne({ date });
-    return summary || void 0;
-  }
-  async getDailySummaries(limit) {
-    const query = this.db.collection("daily_summaries").find({}).sort({ date: -1 });
-    if (limit) query.limit(limit);
-    return await query.toArray();
-  }
-  async createWeeklySummary(insertSummary) {
-    const id = randomUUID();
-    const summary = {
-      ...insertSummary,
-      id,
-      createdAt: /* @__PURE__ */ new Date()
-    };
-    await this.db.collection("weekly_summaries").insertOne(summary);
-    return summary;
-  }
-  async getWeeklySummary(weekStart) {
-    const summary = await this.db.collection("weekly_summaries").findOne({ weekStart });
-    return summary || void 0;
-  }
-  async getWeeklySummaries(limit) {
-    const query = this.db.collection("weekly_summaries").find({}).sort({ weekStart: -1 });
-    if (limit) query.limit(limit);
-    return await query.toArray();
-  }
-  async createMonthlySummary(insertSummary) {
-    const id = randomUUID();
-    const summary = {
-      ...insertSummary,
-      id,
-      createdAt: /* @__PURE__ */ new Date()
-    };
-    await this.db.collection("monthly_summaries").insertOne(summary);
-    return summary;
-  }
-  async getMonthlySummary(month) {
-    const summary = await this.db.collection("monthly_summaries").findOne({ month });
-    return summary || void 0;
-  }
-  async getMonthlySummaries(limit) {
-    const query = this.db.collection("monthly_summaries").find({}).sort({ month: -1 });
-    if (limit) query.limit(limit);
-    return await query.toArray();
-  }
-  async updateSummaries(transaction) {
-    let gpayAmount = 0;
-    let cashAmount = 0;
-    if (transaction.paymentMethod === "gpay") {
-      gpayAmount = parseFloat(transaction.totalAmount);
-    } else if (transaction.paymentMethod === "cash") {
-      cashAmount = parseFloat(transaction.totalAmount);
-    } else if (transaction.paymentMethod === "split" && transaction.splitPayment) {
-      const splitData = transaction.splitPayment;
-      gpayAmount = splitData.gpayAmount || 0;
-      cashAmount = splitData.cashAmount || 0;
-    }
-    const existingDaily = await this.getDailySummary(transaction.date);
-    if (existingDaily) {
-      const newTotalAmount = (parseFloat(existingDaily.totalAmount.toString()) + parseFloat(transaction.totalAmount)).toFixed(2);
-      const newGpayAmount = (parseFloat(existingDaily.gpayAmount.toString()) + gpayAmount).toFixed(2);
-      const newCashAmount = (parseFloat(existingDaily.cashAmount.toString()) + cashAmount).toFixed(2);
-      const newOrderCount = existingDaily.orderCount + 1;
-      await this.db.collection("daily_summaries").updateOne(
-        { date: transaction.date },
-        {
-          $set: {
-            totalAmount: newTotalAmount,
-            gpayAmount: newGpayAmount,
-            cashAmount: newCashAmount,
-            orderCount: newOrderCount
-          }
-        }
-      );
-    } else {
-      await this.createDailySummary({
-        date: transaction.date,
-        totalAmount: transaction.totalAmount,
-        gpayAmount: gpayAmount.toFixed(2),
-        cashAmount: cashAmount.toFixed(2),
-        orderCount: 1
-      });
-    }
-    const weekStart = this.getWeekStart(new Date(transaction.date));
-    const weekEnd = this.getWeekEnd(new Date(transaction.date));
-    const existingWeekly = await this.getWeeklySummary(weekStart);
-    if (existingWeekly) {
-      const newTotalAmount = (parseFloat(existingWeekly.totalAmount.toString()) + parseFloat(transaction.totalAmount)).toFixed(2);
-      const newGpayAmount = (parseFloat(existingWeekly.gpayAmount.toString()) + gpayAmount).toFixed(2);
-      const newCashAmount = (parseFloat(existingWeekly.cashAmount.toString()) + cashAmount).toFixed(2);
-      const newOrderCount = existingWeekly.orderCount + 1;
-      await this.db.collection("weekly_summaries").updateOne(
-        { weekStart },
-        {
-          $set: {
-            totalAmount: newTotalAmount,
-            gpayAmount: newGpayAmount,
-            cashAmount: newCashAmount,
-            orderCount: newOrderCount
-          }
-        }
-      );
-    } else {
-      await this.createWeeklySummary({
-        weekStart,
-        weekEnd,
-        totalAmount: transaction.totalAmount,
-        gpayAmount: gpayAmount.toFixed(2),
-        cashAmount: cashAmount.toFixed(2),
-        orderCount: 1
-      });
-    }
-    const month = transaction.date.substring(0, 7);
-    const existingMonthly = await this.getMonthlySummary(month);
-    if (existingMonthly) {
-      const newTotalAmount = (parseFloat(existingMonthly.totalAmount.toString()) + parseFloat(transaction.totalAmount)).toFixed(2);
-      const newGpayAmount = (parseFloat(existingMonthly.gpayAmount.toString()) + gpayAmount).toFixed(2);
-      const newCashAmount = (parseFloat(existingMonthly.cashAmount.toString()) + cashAmount).toFixed(2);
-      const newOrderCount = existingMonthly.orderCount + 1;
-      await this.db.collection("monthly_summaries").updateOne(
-        { month },
-        {
-          $set: {
-            totalAmount: newTotalAmount,
-            gpayAmount: newGpayAmount,
-            cashAmount: newCashAmount,
-            orderCount: newOrderCount
-          }
-        }
-      );
-    } else {
-      await this.createMonthlySummary({
-        month,
-        totalAmount: transaction.totalAmount,
-        gpayAmount: gpayAmount.toFixed(2),
-        cashAmount: cashAmount.toFixed(2),
-        orderCount: 1
-      });
-    }
-  }
-  getWeekStart(date) {
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(date.setDate(diff));
-    return monday.toISOString().split("T")[0];
-  }
-  getWeekEnd(date) {
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? 0 : 7);
-    const sunday = new Date(date.setDate(diff));
-    return sunday.toISOString().split("T")[0];
-  }
-  // Clear data methods
-  async clearDataByDay(date) {
-    await this.db.collection("transactions").deleteMany({ date });
-    await this.db.collection("daily_summaries").deleteOne({ date });
-    await this.recalculateWeeklySummary(date);
-    await this.recalculateMonthlySummary(date);
-  }
-  async clearDataByWeek(weekStart) {
-    const weekEnd = this.getWeekEnd(new Date(weekStart));
-    await this.db.collection("transactions").deleteMany({
-      date: { $gte: weekStart, $lte: weekEnd }
-    });
-    await this.db.collection("daily_summaries").deleteMany({
-      date: { $gte: weekStart, $lte: weekEnd }
-    });
-    await this.db.collection("weekly_summaries").deleteOne({ weekStart });
-    await this.recalculateMonthlySummary(weekStart);
-  }
-  async clearDataByMonth(month) {
-    await this.db.collection("transactions").deleteMany({
-      date: { $regex: `^${month}` }
-    });
-    await this.db.collection("daily_summaries").deleteMany({
-      date: { $regex: `^${month}` }
-    });
-    await this.db.collection("weekly_summaries").deleteMany({
-      weekStart: { $regex: `^${month}` }
-    });
-    await this.db.collection("monthly_summaries").deleteOne({ month });
-  }
-  async recalculateWeeklySummary(date) {
-    const weekStart = this.getWeekStart(new Date(date));
-    const weekEnd = this.getWeekEnd(new Date(date));
-    const weekTransactions = await this.db.collection("transactions").find({ date: { $gte: weekStart, $lte: weekEnd } }).toArray();
-    await this.db.collection("weekly_summaries").deleteOne({ weekStart });
-    if (weekTransactions.length === 0) {
-      return;
-    }
-    const totalAmount = weekTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const gpayAmount = weekTransactions.filter((t) => t.paymentMethod === "gpay").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const cashAmount = weekTransactions.filter((t) => t.paymentMethod === "cash").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    await this.createWeeklySummary({
-      weekStart,
-      weekEnd,
-      totalAmount: totalAmount.toFixed(2),
-      gpayAmount: gpayAmount.toFixed(2),
-      cashAmount: cashAmount.toFixed(2),
-      orderCount: weekTransactions.length
-    });
-  }
-  async recalculateMonthlySummary(date) {
-    const month = date.substring(0, 7);
-    const monthTransactions = await this.db.collection("transactions").find({ date: { $regex: `^${month}` } }).toArray();
-    await this.db.collection("monthly_summaries").deleteOne({ month });
-    if (monthTransactions.length === 0) {
-      return;
-    }
-    const totalAmount = monthTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const gpayAmount = monthTransactions.filter((t) => t.paymentMethod === "gpay").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    const cashAmount = monthTransactions.filter((t) => t.paymentMethod === "cash").reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
-    await this.createMonthlySummary({
-      month,
-      totalAmount: totalAmount.toFixed(2),
-      gpayAmount: gpayAmount.toFixed(2),
-      cashAmount: cashAmount.toFixed(2),
-      orderCount: monthTransactions.length
-    });
+    return dates;
   }
 };
 var storageInstance;
-async function initializeStorage() {
-  const mongoConnectionString = process.env.MONGODB_URI || process.env.DATABASE_URL;
-  if (mongoConnectionString && mongoConnectionString.includes("mongodb")) {
-    console.log("\u{1F504} Initializing MongoDB Atlas storage...");
+var mongoConnectionString = process.env.MONGODB_URI || process.env.DATABASE_URL;
+var storage;
+if (mongoConnectionString && mongoConnectionString.includes("mongodb")) {
+  console.log("\u{1F504} Initializing MongoDB Atlas storage...");
+  (async () => {
     try {
       const mongoStorage = new MongoStorage(mongoConnectionString);
       await mongoStorage.connect();
+      storage = mongoStorage;
       storageInstance = mongoStorage;
       console.log("\u2705 MongoDB Atlas storage initialized successfully");
-      return storageInstance;
     } catch (error) {
       console.error("\u274C MongoDB Atlas initialization failed:", error);
       console.log("\u{1F504} Falling back to in-memory storage...");
+      storage = new MemStorage();
+      storageInstance = storage;
+      console.log("\u2705 Fallback in-memory storage initialized");
     }
-  } else {
-    console.log("\u{1F4DD} MongoDB connection string not provided, using in-memory storage");
-  }
-  storageInstance = new MemStorage();
+  })();
+} else {
+  console.log("\u{1F4DD} MongoDB connection string not provided, using in-memory storage");
+  storage = new MemStorage();
+  storageInstance = storage;
   console.log("\u2705 In-memory storage initialized");
-  return storageInstance;
 }
-var storage = await initializeStorage();
 process.on("SIGINT", async () => {
   if (storageInstance && "disconnect" in storageInstance) {
     await storageInstance.disconnect?.();
@@ -821,6 +771,7 @@ process.on("SIGTERM", async () => {
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
 var users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
@@ -841,14 +792,12 @@ var transactions = pgTable("transactions", {
   // Array of {id, name, price, quantity}
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: text("payment_method").notNull(),
-  // 'gpay', 'cash', 'split', or 'creditor'
+  // 'gpay', 'cash', or 'split'
   billerName: text("biller_name").notNull().default("Sriram"),
   splitPayment: jsonb("split_payment"),
   // {gpayAmount: number, cashAmount: number} for split payments
   extras: jsonb("extras"),
   // Array of {name: string, amount: number}
-  creditor: jsonb("creditor"),
-  // {name: string, paidAmount: number, balanceAmount: number, totalAmount: number}
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   date: text("date").notNull(),
   // YYYY-MM-DD format
@@ -910,19 +859,41 @@ var insertMonthlySummarySchema = createInsertSchema(monthlySummaries).omit({
   id: true,
   createdAt: true
 });
+var itemsSchema = z.array(
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    price: z.number(),
+    quantity: z.number()
+  })
+);
+var splitPaymentSchema = z.object({
+  gpayAmount: z.number(),
+  cashAmount: z.number()
+});
+var extrasSchema = z.array(
+  z.object({
+    name: z.string(),
+    amount: z.number()
+  })
+);
 
 // server/routes.ts
-import { z } from "zod";
+import { z as z2 } from "zod";
 async function registerRoutes(app2) {
   app2.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
+      if (!storage) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
       const user = await storage.getUserByUsername(username);
       if (!user || user.password !== password) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
       res.json({ user: { id: user.id, username: user.username } });
     } catch (error) {
+      console.error("Login error:", error);
       res.status(500).json({ error: "Login failed" });
     }
   });
@@ -932,6 +903,31 @@ async function registerRoutes(app2) {
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch menu items" });
+    }
+  });
+  app2.get("/api/menu/sales", async (req, res) => {
+    try {
+      const date = req.query.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      const transactions2 = await storage.getTransactionsByDate(date);
+      const menuItems2 = await storage.getMenuItems();
+      const salesData = menuItems2.map((item) => {
+        const totalSold = transactions2.reduce((count, transaction) => {
+          const items = transaction.items;
+          const itemSold = items.find((i) => i.id === item.id);
+          return count + (itemSold ? itemSold.quantity : 0);
+        }, 0);
+        return {
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          price: item.price,
+          totalSold,
+          revenue: totalSold * parseFloat(item.price)
+        };
+      });
+      res.json(salesData.sort((a, b) => b.totalSold - a.totalSold));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch menu item sales" });
     }
   });
   app2.get("/api/menu/:id", async (req, res) => {
@@ -998,7 +994,7 @@ async function registerRoutes(app2) {
       const transaction = await storage.createTransaction(validatedData);
       res.json(transaction);
     } catch (error) {
-      if (error instanceof z.ZodError) {
+      if (error instanceof z2.ZodError) {
         return res.status(400).json({ error: "Invalid transaction data", details: error.errors });
       }
       res.status(500).json({ error: "Failed to create transaction" });
@@ -1057,60 +1053,6 @@ async function registerRoutes(app2) {
       res.json(summaries);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch monthly summaries" });
-    }
-  });
-  app2.get("/api/creditors/summary", async (req, res) => {
-    try {
-      const transactions2 = await storage.getTransactions();
-      const creditorTransactions = transactions2.filter(
-        (t) => t.paymentMethod === "creditor" && t.creditor
-      );
-      const creditorSummary = creditorTransactions.reduce((acc, transaction) => {
-        const creditor = transaction.creditor;
-        if (!creditor || !creditor.name) return acc;
-        if (!acc[creditor.name]) {
-          acc[creditor.name] = {
-            name: creditor.name,
-            totalAmount: 0,
-            paidAmount: 0,
-            balanceAmount: 0,
-            transactionCount: 0
-          };
-        }
-        acc[creditor.name].totalAmount += creditor.totalAmount || 0;
-        acc[creditor.name].paidAmount += creditor.paidAmount || 0;
-        acc[creditor.name].balanceAmount += creditor.balanceAmount || 0;
-        acc[creditor.name].transactionCount += 1;
-        return acc;
-      }, {});
-      res.json(Object.values(creditorSummary));
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch creditor summary" });
-    }
-  });
-  app2.get("/api/menu/sales", async (req, res) => {
-    try {
-      const date = req.query.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-      const transactions2 = await storage.getTransactionsByDate(date);
-      const menuItems2 = await storage.getMenuItems();
-      const salesData = menuItems2.map((item) => {
-        const totalSold = transactions2.reduce((count, transaction) => {
-          const items = transaction.items;
-          const itemSold = items.find((i) => i.id === item.id);
-          return count + (itemSold ? itemSold.quantity : 0);
-        }, 0);
-        return {
-          id: item.id,
-          name: item.name,
-          category: item.category,
-          price: item.price,
-          totalSold,
-          revenue: totalSold * parseFloat(item.price)
-        };
-      });
-      res.json(salesData.sort((a, b) => b.totalSold - a.totalSold));
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch menu item sales" });
     }
   });
   app2.delete("/api/data/clear", async (req, res) => {
@@ -1202,6 +1144,7 @@ var vite_config_default = defineConfig({
       )
     ] : []
   ],
+  base: process.env.VITE_BASE_PATH || "/",
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -1308,7 +1251,11 @@ app.use((req, res, next) => {
     if (path3.startsWith("/api")) {
       let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        try {
+          logLine += ` :: ${JSON.stringify(capturedJsonResponse, null, 2)}`;
+        } catch (error) {
+          logLine += ` :: [Error while stringifying response]`;
+        }
       }
       if (logLine.length > 80) {
         logLine = logLine.slice(0, 79) + "\u2026";
@@ -1318,15 +1265,15 @@ app.use((req, res, next) => {
   });
   next();
 });
+app.use((err, _req, res, _next) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  res.status(status).json({ message });
+  log(`Error: ${message} (Status: ${status})`);
+});
 (async () => {
   const server = await registerRoutes(app);
-  app.use((err, _req, res, _next) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    res.status(status).json({ message });
-    throw err;
-  });
-  if (app.get("env") === "development") {
+  if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
@@ -1337,6 +1284,6 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
     reusePort: true
   }, () => {
-    log(`serving on port ${port}`);
+    log(`Server is running on port ${port}`);
   });
 })();
