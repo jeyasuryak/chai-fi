@@ -894,12 +894,12 @@ async function waitForStorage(timeoutMs = 5e3) {
 }
 function asyncHandler(fn) {
   return (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch((error) => {
+    Promise.resolve(fn(req, res)).catch((error) => {
       console.error("API Error:", error);
       if (!res.headersSent) {
         res.status(500).json({
           error: "Internal server error",
-          message: error.message || "An unexpected error occurred",
+          message: error?.message || "An unexpected error occurred",
           timestamp: (/* @__PURE__ */ new Date()).toISOString()
         });
       }
@@ -920,7 +920,7 @@ async function registerRoutes(app2) {
       res.status(503).json({
         status: "error",
         storage: "initialization_failed",
-        error: error.message,
+        error: error?.message || "Unknown error",
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
     }

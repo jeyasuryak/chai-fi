@@ -36,7 +36,7 @@ export default function MenuPage() {
             : cartItem
         );
       }
-      return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
+      return [...prev, { id: item.id, name: item.name, price: parseFloat(item.price), quantity: 1 }];
     });
   };
 

@@ -143,27 +143,13 @@ export default function InvoicePage() {
                       </div>
                     </>
                   )}
-                  {transaction.paymentMethod === "creditor" && transaction.creditor && (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground ml-4">Customer:</span>
-                        <span className="text-secondary" data-testid="text-creditor-name">
-                          {(transaction.creditor as any).name}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground ml-4">Paid:</span>
-                        <span className="text-secondary" data-testid="text-creditor-paid">
-                          ₹{(transaction.creditor as any).paidAmount?.toFixed(2) || "0.00"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground ml-4">Balance:</span>
-                        <span className="text-red-600 font-medium" data-testid="text-creditor-balance">
-                          ₹{(transaction.creditor as any).balanceAmount?.toFixed(2) || "0.00"}
-                        </span>
-                      </div>
-                    </>
+                  {transaction.paymentMethod === "credit" && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground ml-4">Payment Type:</span>
+                      <span className="text-orange-600 font-medium" data-testid="text-credit-payment">
+                        Credit Payment
+                      </span>
+                    </div>
                   )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Status:</span>

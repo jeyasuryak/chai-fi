@@ -82,6 +82,23 @@ const initializeApp = async () => {
     // Serve static files in production
     serveStatic(app);
     
+    // Add catch-all route for unmatched API routes
+    app.use('/api/*', (req, res) => {
+      res.status(404).json({ 
+        error: 'API endpoint not found',
+        message: `The requested API endpoint ${req.path} was not found`,
+        timestamp: new Date().toISOString(),
+        availableEndpoints: [
+          '/api/health',
+          '/api/auth/login',
+          '/api/auth/logout',
+          '/api/auth/user',
+          '/api/menu',
+          '/api/transactions'
+        ]
+      });
+    });
+    
     routesInitialized = true;
     console.log('Routes initialized successfully');
     

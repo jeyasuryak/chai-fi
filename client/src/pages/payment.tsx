@@ -31,7 +31,7 @@ export default function PaymentPage() {
     if (savedCart) {
       const cartItems: CartItem[] = JSON.parse(savedCart);
       setCart(cartItems);
-      const calculatedTotal = cartItems.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
+      const calculatedTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       setTotal(calculatedTotal);
       setManualTotal(calculatedTotal.toString());
     } else {
@@ -161,7 +161,7 @@ export default function PaymentPage() {
                       </span>
                     </div>
                     <span className="font-semibold text-primary" data-testid={`text-item-total-${item.id}`}>
-                      ₹{(parseFloat(item.price) * item.quantity).toFixed(2)}
+                      ₹{(item.price * item.quantity).toFixed(2)}
                     </span>
                   </div>
                 ))}

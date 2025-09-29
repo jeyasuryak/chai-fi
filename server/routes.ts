@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertTransactionSchema } from "@shared/schema";
@@ -23,14 +23,14 @@ async function waitForStorage(timeoutMs = 5000) {
 }
 
 // Wrapper function to handle API errors consistently
-function asyncHandler(fn: Function) {
-  return (req: any, res: any, next: any) => {
-    Promise.resolve(fn(req, res, next)).catch((error) => {
+function asyncHandler(fn: (req: Request, res: Response) => Promise<any>) {
+  return (req: Request, res: Response, next: any) => {
+    Promise.resolve(fn(req, res)).catch((error: any) => {
       console.error('API Error:', error);
       if (!res.headersSent) {
         res.status(500).json({ 
           error: 'Internal server error',
-          message: error.message || 'An unexpected error occurred',
+          message: error?.message || 'An unexpected error occurred',
           timestamp: new Date().toISOString()
         });
       }
@@ -50,11 +50,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'production'
       });
-    } catch (error) {
+    } catch (error: any) {
       res.status(503).json({ 
         status: "error", 
         storage: "initialization_failed",
-        error: error.message,
+        error: error?.message || 'Unknown error',
         timestamp: new Date().toISOString()
       });
     }

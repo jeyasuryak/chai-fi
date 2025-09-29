@@ -43,7 +43,7 @@ export default function SearchPage() {
             : cartItem
         );
       } else {
-        newCart = [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
+        newCart = [...prev, { id: item.id, name: item.name, price: parseFloat(item.price), quantity: 1 }];
       }
       localStorage.setItem("cart", JSON.stringify(newCart));
       return newCart;
