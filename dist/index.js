@@ -880,14 +880,39 @@ var extrasSchema = z.array(
 
 // server/routes.ts
 import { z as z2 } from "zod";
+async function waitForStorage() {
+  let attempts = 0;
+  while (!storage && attempts < 50) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    attempts++;
+  }
+  return storage;
+}
 async function registerRoutes(app2) {
+  app2.get("/api/health", async (req, res) => {
+    try {
+      const storageInstance2 = await waitForStorage();
+      res.json({
+        status: "ok",
+        storage: storageInstance2 ? "connected" : "unavailable",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: "error",
+        storage: "error",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  });
   app2.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
-      if (!storage) {
+      const storageInstance2 = await waitForStorage();
+      if (!storageInstance2) {
         return res.status(503).json({ error: "Service temporarily unavailable" });
       }
-      const user = await storage.getUserByUsername(username);
+      const user = await storageInstance2.getUserByUsername(username);
       if (!user || user.password !== password) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
@@ -899,7 +924,11 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/menu", async (req, res) => {
     try {
-      const items = await storage.getMenuItems();
+      const storageInstance2 = await waitForStorage();
+      if (!storageInstance2) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
+      const items = await storageInstance2.getMenuItems();
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch menu items" });
@@ -907,9 +936,13 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/menu/sales", async (req, res) => {
     try {
+      const storageInstance2 = await waitForStorage();
+      if (!storageInstance2) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
       const date = req.query.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-      const transactions2 = await storage.getTransactionsByDate(date);
-      const menuItems2 = await storage.getMenuItems();
+      const transactions2 = await storageInstance2.getTransactionsByDate(date);
+      const menuItems2 = await storageInstance2.getMenuItems();
       const salesData = menuItems2.map((item) => {
         const totalSold = transactions2.reduce((count, transaction) => {
           const items = transaction.items;
@@ -990,8 +1023,12 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/transactions", async (req, res) => {
     try {
+      const storageInstance2 = await waitForStorage();
+      if (!storageInstance2) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
       const validatedData = insertTransactionSchema.parse(req.body);
-      const transaction = await storage.createTransaction(validatedData);
+      const transaction = await storageInstance2.createTransaction(validatedData);
       res.json(transaction);
     } catch (error) {
       if (error instanceof z2.ZodError) {
@@ -1272,18 +1309,23 @@ app.use((err, _req, res, _next) => {
   log(`Error: ${message} (Status: ${status})`);
 });
 (async () => {
-  const server = await registerRoutes(app);
-  if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+  try {
+    const server = await registerRoutes(app);
+    if (process.env.NODE_ENV === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
+    const port = parseInt(process.env.PORT || "5000", 10);
+    server.listen({
+      port,
+      host: "0.0.0.0",
+      reusePort: true
+    }, () => {
+      log(`Server is running on port ${port}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
   }
-  const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true
-  }, () => {
-    log(`Server is running on port ${port}`);
-  });
 })();

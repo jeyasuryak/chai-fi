@@ -4,18 +4,47 @@ import { storage } from "./storage";
 import { insertTransactionSchema } from "@shared/schema";
 import { z } from "zod";
 
+// Helper function to wait for storage initialization
+async function waitForStorage() {
+  let attempts = 0;
+  while (!storage && attempts < 50) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    attempts++;
+  }
+  return storage;
+}
+
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoint
+  app.get("/api/health", async (req, res) => {
+    try {
+      const storageInstance = await waitForStorage();
+      res.json({ 
+        status: "ok", 
+        storage: storageInstance ? "connected" : "unavailable",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        status: "error", 
+        storage: "error",
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // Authentication
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
       
-      // Wait for storage to be initialized
-      if (!storage) {
+      const storageInstance = await waitForStorage();
+      if (!storageInstance) {
         return res.status(503).json({ error: "Service temporarily unavailable" });
       }
       
-      const user = await storage.getUserByUsername(username);
+      const user = await storageInstance.getUserByUsername(username);
       
       if (!user || user.password !== password) {
         return res.status(401).json({ error: "Invalid credentials" });
@@ -31,7 +60,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Menu Items
   app.get("/api/menu", async (req, res) => {
     try {
-      const items = await storage.getMenuItems();
+      const storageInstance = await waitForStorage();
+      if (!storageInstance) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
+      
+      const items = await storageInstance.getMenuItems();
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch menu items" });
@@ -41,9 +75,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Menu item sales endpoint - MUST come before /api/menu/:id
   app.get("/api/menu/sales", async (req, res) => {
     try {
+      const storageInstance = await waitForStorage();
+      if (!storageInstance) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
+      
       const date = req.query.date as string || new Date().toISOString().split('T')[0];
-      const transactions = await storage.getTransactionsByDate(date);
-      const menuItems = await storage.getMenuItems();
+      const transactions = await storageInstance.getTransactionsByDate(date);
+      const menuItems = await storageInstance.getMenuItems();
       
       const salesData = menuItems.map(item => {
         const totalSold = transactions.reduce((count, transaction) => {
@@ -135,8 +174,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Transactions
   app.post("/api/transactions", async (req, res) => {
     try {
+      const storageInstance = await waitForStorage();
+      if (!storageInstance) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
+      
       const validatedData = insertTransactionSchema.parse(req.body);
-      const transaction = await storage.createTransaction(validatedData);
+      const transaction = await storageInstance.createTransaction(validatedData);
       res.json(transaction);
     } catch (error) {
       if (error instanceof z.ZodError) {

@@ -59,24 +59,29 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 // Async function to initialize routes and Vite setup
 (async () => {
-  const server = await registerRoutes(app);
+  try {
+    const server = await registerRoutes(app);
 
-  // Set up Vite in development environment and static files in production
-  if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+    // Set up Vite in development environment and static files in production
+    if (process.env.NODE_ENV === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
+
+    // Use the port from the environment variable or default to 5000
+    const port = parseInt(process.env.PORT || '5000', 10);
+
+    // Start the server
+    server.listen({
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    }, () => {
+      log(`Server is running on port ${port}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
   }
-
-  // Use the port from the environment variable or default to 5000
-  const port = parseInt(process.env.PORT || '5000', 10);
-
-  // Start the server
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`Server is running on port ${port}`);
-  });
 })();
