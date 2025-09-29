@@ -3,12 +3,14 @@ import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean } f
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Users Table
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });
 
+// Menu Items Table
 export const menuItems = pgTable("menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -19,6 +21,7 @@ export const menuItems = pgTable("menu_items", {
   available: boolean("available").notNull().default(true),
 });
 
+// Transactions Table
 export const transactions = pgTable("transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   items: jsonb("items").notNull(), // Array of {id, name, price, quantity}
@@ -33,6 +36,7 @@ export const transactions = pgTable("transactions", {
   time: text("time").notNull(), // HH:MM AM/PM format
 });
 
+// Daily Summaries Table
 export const dailySummaries = pgTable("daily_summaries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   date: text("date").notNull().unique(), // YYYY-MM-DD format
@@ -43,6 +47,7 @@ export const dailySummaries = pgTable("daily_summaries", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+// Weekly Summaries Table
 export const weeklySummaries = pgTable("weekly_summaries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   weekStart: text("week_start").notNull(), // YYYY-MM-DD format (Monday)
@@ -54,6 +59,7 @@ export const weeklySummaries = pgTable("weekly_summaries", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+// Monthly Summaries Table
 export const monthlySummaries = pgTable("monthly_summaries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   month: text("month").notNull(), // YYYY-MM format
@@ -64,7 +70,7 @@ export const monthlySummaries = pgTable("monthly_summaries", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
-// Insert schemas
+// Insert Schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
 });
@@ -116,6 +122,28 @@ export type InsertMonthlySummary = z.infer<typeof insertMonthlySummarySchema>;
 export type CartItem = {
   id: string;
   name: string;
-  price: string;
+  price: number;  // Fixed price to be a number instead of a string
   quantity: number;
 };
+
+// Define Zod schema for jsonb fields
+export const itemsSchema = z.array(
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    price: z.number(),
+    quantity: z.number(),
+  })
+);
+
+export const splitPaymentSchema = z.object({
+  gpayAmount: z.number(),
+  cashAmount: z.number(),
+});
+
+export const extrasSchema = z.array(
+  z.object({
+    name: z.string(),
+    amount: z.number(),
+  })
+);

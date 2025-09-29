@@ -12,7 +12,7 @@
       "src": "client/**",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "../dist/public"
+        "distDir": "./dist/public"
       }
     }
   ],
