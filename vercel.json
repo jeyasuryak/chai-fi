@@ -29,11 +29,5 @@
       "src": "/(.*)",
       "dest": "/dist/public/index.html"
     }
-  ],
-  "env": {
-    "MONGODB_URI": "@mongodb_uri",
-    "DATABASE_URL": "@database_url",
-    "SESSION_SECRET": "@session_secret",
-    "NODE_ENV": "production"
-  }
+  ]
 }
