@@ -1,13 +1,32 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Download, IndianRupee, Receipt } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, IndianRupee, Receipt, Trash2, Users, TrendingUp, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { generateDailySummaryPDF, generateWeeklySummaryPDF, generateMonthlySummaryPDF } from "@/lib/pdf";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip } from "recharts";
+import { generateDailySummaryPDF, generateWeeklySummaryPDF, generateMonthlySummaryPDF, generateMenuSalesPDF } from "@/lib/pdf";
+import { useToast } from "@/hooks/use-toast";
 import type { DailySummary, WeeklySummary, MonthlySummary } from "@shared/schema";
+
+type CreditorSummary = {
+  name: string;
+  totalAmount: number;
+};
+
+type MenuItemSales = {
+  name: string;
+  count: number;
+};
 
 export default function DashboardPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"today" | "week" | "month">("today");
+  const [clearPeriod, setClearPeriod] = useState<"day" | "week" | "month">("day");
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: dailySummaries = [] } = useQuery<DailySummary[]>({
     queryKey: ["/api/summaries/daily"],
@@ -21,11 +40,83 @@ export default function DashboardPage() {
     queryKey: ["/api/summaries/monthly"],
   });
 
-  const today = new Date().toISOString().split('T')[0];
-  const todaySummary = dailySummaries.find(s => s.date === today);
+  const { data: creditorSummary = [], isLoading: creditorSummaryLoading, error: creditorSummaryError } = useQuery<CreditorSummary[]>({
+    queryKey: ["/api/creditors/summary"],
+  });
 
+  const today = new Date().toISOString().split('T')[0];
+  const { data: menuItemSales = [], isLoading: menuItemSalesLoading, error: menuItemSalesError } = useQuery<MenuItemSales[]>({
+    queryKey: ["/api/menu-items/sales"],
+  });
+
+  const todaySummary = dailySummaries.find(s => s.date === today);
   const currentWeek = weeklySummaries[0];
   const currentMonth = monthlySummaries[0];
+
+  // Calculate total creditor balance
+  const totalCreditorBalance = creditorSummary.reduce((sum, creditor) => sum + creditor.totalAmount, 0);
+
+  // Prepare chart data
+  const chartData = menuItemSales.slice(0, 10).map(item => ({
+    name: item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name,
+    sales: item.count,
+  }));
+
+  const chartConfig = {
+    sales: {
+      label: "Sales Count",
+      color: "hsl(var(--primary))",
+    },
+  };
+
+  const handleClearData = async () => {
+    try {
+      let dateParam = today;
+      
+      if (clearPeriod === 'week') {
+        // Get Monday of current week
+        const currentDate = new Date();
+        const day = currentDate.getDay();
+        const diff = currentDate.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(currentDate.setDate(diff));
+        dateParam = monday.toISOString().split('T')[0];
+      } else if (clearPeriod === 'month') {
+        dateParam = today.substring(0, 7); // YYYY-MM format
+      }
+
+      const response = await fetch(`/api/data/clear?period=${clearPeriod}&date=${dateParam}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast({
+          title: "Data Cleared",
+          description: result.message,
+        });
+        
+        // Refresh all queries
+        queryClient.invalidateQueries({ queryKey: ["/api/summaries/daily"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/summaries/weekly"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/summaries/monthly"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/creditors/summary"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/menu-items/sales"] });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to clear data",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to clear data",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleDownloadDaily = async () => {
     if (!todaySummary) return;
@@ -57,14 +148,80 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDownloadMenuSales = async () => {
+    if (!menuItemSales || menuItemSales.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No menu sales data available to download",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      await generateMenuSalesPDF(menuItemSales);
+      toast({
+        title: "PDF Downloaded",
+        description: "Menu sales report has been downloaded successfully",
+      });
+    } catch (error) {
+      console.error("Failed to generate menu sales PDF:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate menu sales PDF",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-secondary" data-testid="dashboard-title">Dashboard</h1>
-            <p className="text-muted-foreground" data-testid="dashboard-subtitle">Transaction summaries and analytics</p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-secondary" data-testid="dashboard-title">Dashboard</h1>
+              <p className="text-muted-foreground" data-testid="dashboard-subtitle">Transaction summaries and analytics</p>
+            </div>
+            
+            {/* Clear Data Button */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear Data</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action will permanently delete data from both frontend and MongoDB backend. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="py-4">
+                  <label className="text-sm font-medium mb-2 block">Select period to clear:</label>
+                  <Select value={clearPeriod} onValueChange={(value: "day" | "week" | "month") => setClearPeriod(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Today's Data</SelectItem>
+                      <SelectItem value="week">This Week's Data</SelectItem>
+                      <SelectItem value="month">This Month's Data</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearData} className="bg-red-600 hover:bg-red-700">
+                    Clear Data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
+          
           <div className="flex space-x-4">
             <Button 
               variant={selectedPeriod === "today" ? "default" : "secondary"}
@@ -91,7 +248,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
@@ -153,6 +310,65 @@ export default function DashboardPage() {
                 {todaySummary?.orderCount || 0}
               </div>
               <div className="text-sm text-green-600" data-testid="text-order-growth">+0 from yesterday</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Creditor Summary */}
+        <div className="mb-8">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-secondary">Creditor Summary</h2>
+                <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
+                  <Users className="text-red-600 text-xl" />
+                </div>
+              </div>
+              
+              {creditorSummaryLoading ? (
+                <div className="text-center py-4">Loading creditor data...</div>
+              ) : creditorSummaryError ? (
+                <div className="text-center py-4 text-red-600">Error loading creditor data</div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center p-4 bg-red-50 rounded-lg border border-red-200">
+                    <div>
+                      <div className="font-medium text-red-700">Total Outstanding</div>
+                      <div className="text-sm text-red-600">
+                        {creditorSummary?.length || 0} creditors
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-red-800">
+                        ₹{creditorSummary?.reduce((sum, creditor) => sum + creditor.totalAmount, 0).toFixed(2) || "0.00"}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {creditorSummary && creditorSummary.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2">Creditor</th>
+                            <th className="text-right py-2">Amount Due</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {creditorSummary.map((creditor, index) => (
+                            <tr key={index} className="border-b border-gray-100">
+                              <td className="py-2">{creditor.name}</td>
+                              <td className="text-right py-2 font-medium text-red-600">
+                                ₹{creditor.totalAmount.toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -315,6 +531,109 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Menu Item Sales Analytics */}
+        <div className="mt-8 grid lg:grid-cols-2 gap-8">
+          {/* Sales Table */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-secondary">Today's Menu Sales</h2>
+                <div className="flex items-center gap-3">
+                  <Button 
+                    onClick={handleDownloadMenuSales}
+                    className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm hover:bg-accent transition-colors"
+                    disabled={!menuItemSales || menuItemSales.length === 0}
+                    data-testid="button-download-menu-sales"
+                  >
+                    <Download className="mr-2" size={16} />
+                    Download PDF
+                  </Button>
+                  <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                    <BarChart3 className="text-purple-600 text-xl" />
+                  </div>
+                </div>
+              </div>
+              
+              {menuItemSalesLoading ? (
+                <div className="text-center py-4">Loading sales data...</div>
+              ) : menuItemSalesError ? (
+                <div className="text-center py-4 text-red-600">Error loading sales data</div>
+              ) : (
+                <div className="space-y-4">
+                  {menuItemSales && menuItemSales.length > 0 ? (
+                    <div className="max-h-64 overflow-y-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Menu Item</TableHead>
+                            <TableHead className="text-right">Sales Count</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {menuItemSales.map((item, index) => (
+                            <TableRow key={index}>
+                              <TableCell className="font-medium">{item.name}</TableCell>
+                              <TableCell className="text-right font-bold text-purple-600">
+                                {item.count}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No sales data available for today
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Sales Chart */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-secondary">Sales Visualization</h2>
+                <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="text-green-600 text-xl" />
+                </div>
+              </div>
+              
+              {menuItemSalesLoading ? (
+                <div className="text-center py-4">Loading chart data...</div>
+              ) : menuItemSalesError ? (
+                <div className="text-center py-4 text-red-600">Error loading chart data</div>
+              ) : (
+                <div className="h-64">
+                  {menuItemSales && menuItemSales.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={menuItemSales} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="name" 
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          fontSize={12}
+                        />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="count" fill="#8884d8" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      No data to display
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* MongoDB Connection Info */}
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-6">

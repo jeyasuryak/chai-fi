@@ -98,7 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Transactions
   app.post("/api/transactions", async (req, res) => {
     try {
-      const validatedData = insertTransactionSchema.parse(req.body);
+      const validatedData = insertTransactionSchema.parse(req.body);  // ← error likely here
       const transaction = await storage.createTransaction(validatedData);
       res.json(transaction);
     } catch (error) {
@@ -108,6 +108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to create transaction" });
     }
   });
+  
 
   app.get("/api/transactions", async (req, res) => {
     try {
@@ -245,18 +246,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { period, date } = req.query;
       
       if (period === 'day' && date) {
-        // Clear daily data - this would need to be implemented in storage
+        await storage.clearDataByDay(date as string);
         res.json({ message: `Cleared data for ${date}` });
       } else if (period === 'week' && date) {
-        // Clear weekly data
+        await storage.clearDataByWeek(date as string);
         res.json({ message: `Cleared weekly data starting ${date}` });
       } else if (period === 'month' && date) {
-        // Clear monthly data
+        await storage.clearDataByMonth(date as string);
         res.json({ message: `Cleared monthly data for ${date}` });
       } else {
-        res.status(400).json({ error: "Invalid parameters" });
+        res.status(400).json({ error: "Invalid parameters. Required: period (day/week/month) and date" });
       }
     } catch (error) {
+      console.error("Clear data error:", error);
       res.status(500).json({ error: "Failed to clear data" });
     }
   });
@@ -313,6 +315,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch monthly data" });
     }
   });
+
+
 
   const httpServer = createServer(app);
   return httpServer;

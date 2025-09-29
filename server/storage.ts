@@ -1,5 +1,9 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import { type User, type InsertUser, type MenuItem, type InsertMenuItem, type Transaction, type InsertTransaction, type DailySummary, type InsertDailySummary, type WeeklySummary, type InsertWeeklySummary, type MonthlySummary, type InsertMonthlySummary } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { MongoStorage } from "./db/mongodb";
 
 export interface IStorage {
   // Users
@@ -33,6 +37,11 @@ export interface IStorage {
   createMonthlySummary(summary: InsertMonthlySummary): Promise<MonthlySummary>;
   getMonthlySummary(month: string): Promise<MonthlySummary | undefined>;
   getMonthlySummaries(limit?: number): Promise<MonthlySummary[]>;
+
+  // Clear data methods
+  clearDataByDay(date: string): Promise<void>;
+  clearDataByWeek(weekStart: string): Promise<void>;
+  clearDataByMonth(month: string): Promise<void>;
 
   // MongoDB connection methods
   connect?(): Promise<void>;
@@ -285,8 +294,17 @@ export class MemStorage implements IStorage {
   }
 
   private async updateSummaries(transaction: Transaction) {
-    const gpayAmount = transaction.paymentMethod === 'gpay' ? parseFloat(transaction.totalAmount) : 0;
-    const cashAmount = transaction.paymentMethod === 'cash' ? parseFloat(transaction.totalAmount) : 0;
+    let gpayAmount = 0;
+    let cashAmount = 0;
+
+    if (transaction.paymentMethod === 'gpay') {
+      gpayAmount = parseFloat(transaction.totalAmount);
+    } else if (transaction.paymentMethod === 'cash') {
+      cashAmount = parseFloat(transaction.totalAmount);
+    } else if (transaction.paymentMethod === 'split' && transaction.splitPayment) {
+      gpayAmount = transaction.splitPayment.gpayAmount || 0;
+      cashAmount = transaction.splitPayment.cashAmount || 0;
+    }
 
     // Update daily summary
     const existingDaily = await this.getDailySummary(transaction.date);
@@ -359,6 +377,134 @@ export class MemStorage implements IStorage {
     const diff = date.getDate() - day + (day === 0 ? 0 : 7); // Adjust when day is Sunday
     const sunday = new Date(date.setDate(diff));
     return sunday.toISOString().split('T')[0];
+  }
+
+  // Clear data methods
+  async clearDataByDay(date: string): Promise<void> {
+    // Remove transactions for the specific date
+    const transactionsToDelete = Array.from(this.transactions.entries())
+      .filter(([_, transaction]) => transaction.date === date)
+      .map(([id, _]) => id);
+    
+    transactionsToDelete.forEach(id => this.transactions.delete(id));
+    
+    // Remove daily summary for the date
+    this.dailySummaries.delete(date);
+    
+    // Update weekly and monthly summaries by recalculating
+    await this.recalculateWeeklySummary(date);
+    await this.recalculateMonthlySummary(date);
+  }
+
+  async clearDataByWeek(weekStart: string): Promise<void> {
+    const weekEnd = this.getWeekEnd(new Date(weekStart));
+    
+    // Remove transactions for the week
+    const transactionsToDelete = Array.from(this.transactions.entries())
+      .filter(([_, transaction]) => transaction.date >= weekStart && transaction.date <= weekEnd)
+      .map(([id, _]) => id);
+    
+    transactionsToDelete.forEach(id => this.transactions.delete(id));
+    
+    // Remove daily summaries for the week
+    const dailySummariesToDelete = Array.from(this.dailySummaries.entries())
+      .filter(([date, _]) => date >= weekStart && date <= weekEnd)
+      .map(([date, _]) => date);
+    
+    dailySummariesToDelete.forEach(date => this.dailySummaries.delete(date));
+    
+    // Remove weekly summary
+    this.weeklySummaries.delete(weekStart);
+    
+    // Update monthly summary by recalculating
+    await this.recalculateMonthlySummary(weekStart);
+  }
+
+  async clearDataByMonth(month: string): Promise<void> {
+    const startDate = `${month}-01`;
+    const endDate = `${month}-31`;
+    
+    // Remove transactions for the month
+    const transactionsToDelete = Array.from(this.transactions.entries())
+      .filter(([_, transaction]) => transaction.date.startsWith(month))
+      .map(([id, _]) => id);
+    
+    transactionsToDelete.forEach(id => this.transactions.delete(id));
+    
+    // Remove daily summaries for the month
+    const dailySummariesToDelete = Array.from(this.dailySummaries.entries())
+      .filter(([date, _]) => date.startsWith(month))
+      .map(([date, _]) => date);
+    
+    dailySummariesToDelete.forEach(date => this.dailySummaries.delete(date));
+    
+    // Remove weekly summaries that fall within the month
+    const weeklySummariesToDelete = Array.from(this.weeklySummaries.entries())
+      .filter(([weekStart, _]) => weekStart.startsWith(month))
+      .map(([weekStart, _]) => weekStart);
+    
+    weeklySummariesToDelete.forEach(weekStart => this.weeklySummaries.delete(weekStart));
+    
+    // Remove monthly summary
+    this.monthlySummaries.delete(month);
+  }
+
+  private async recalculateWeeklySummary(date: string): Promise<void> {
+    const weekStart = this.getWeekStart(new Date(date));
+    const weekEnd = this.getWeekEnd(new Date(date));
+    
+    const weekTransactions = Array.from(this.transactions.values())
+      .filter(t => t.date >= weekStart && t.date <= weekEnd);
+    
+    if (weekTransactions.length === 0) {
+      this.weeklySummaries.delete(weekStart);
+      return;
+    }
+    
+    const totalAmount = weekTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const gpayAmount = weekTransactions
+      .filter(t => t.paymentMethod === 'gpay')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const cashAmount = weekTransactions
+      .filter(t => t.paymentMethod === 'cash')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    
+    await this.createWeeklySummary({
+      weekStart,
+      weekEnd,
+      totalAmount: totalAmount.toFixed(2),
+      gpayAmount: gpayAmount.toFixed(2),
+      cashAmount: cashAmount.toFixed(2),
+      orderCount: weekTransactions.length,
+    });
+  }
+
+  private async recalculateMonthlySummary(date: string): Promise<void> {
+    const month = date.substring(0, 7);
+    
+    const monthTransactions = Array.from(this.transactions.values())
+      .filter(t => t.date.startsWith(month));
+    
+    if (monthTransactions.length === 0) {
+      this.monthlySummaries.delete(month);
+      return;
+    }
+    
+    const totalAmount = monthTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const gpayAmount = monthTransactions
+      .filter(t => t.paymentMethod === 'gpay')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const cashAmount = monthTransactions
+      .filter(t => t.paymentMethod === 'cash')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    
+    await this.createMonthlySummary({
+      month,
+      totalAmount: totalAmount.toFixed(2),
+      gpayAmount: gpayAmount.toFixed(2),
+      cashAmount: cashAmount.toFixed(2),
+      orderCount: monthTransactions.length,
+    });
   }
 }
 
@@ -746,6 +892,123 @@ class MongoStorage implements IStorage {
     const diff = date.getDate() - day + (day === 0 ? 0 : 7);
     const sunday = new Date(date.setDate(diff));
     return sunday.toISOString().split('T')[0];
+  }
+
+  // Clear data methods
+  async clearDataByDay(date: string): Promise<void> {
+    // Remove transactions for the specific date
+    await this.db.collection('transactions').deleteMany({ date });
+    
+    // Remove daily summary for the date
+    await this.db.collection('daily_summaries').deleteOne({ date });
+    
+    // Update weekly and monthly summaries by recalculating
+    await this.recalculateWeeklySummary(date);
+    await this.recalculateMonthlySummary(date);
+  }
+
+  async clearDataByWeek(weekStart: string): Promise<void> {
+    const weekEnd = this.getWeekEnd(new Date(weekStart));
+    
+    // Remove transactions for the week
+    await this.db.collection('transactions').deleteMany({
+      date: { $gte: weekStart, $lte: weekEnd }
+    });
+    
+    // Remove daily summaries for the week
+    await this.db.collection('daily_summaries').deleteMany({
+      date: { $gte: weekStart, $lte: weekEnd }
+    });
+    
+    // Remove weekly summary
+    await this.db.collection('weekly_summaries').deleteOne({ weekStart });
+    
+    // Update monthly summary by recalculating
+    await this.recalculateMonthlySummary(weekStart);
+  }
+
+  async clearDataByMonth(month: string): Promise<void> {
+    // Remove transactions for the month
+    await this.db.collection('transactions').deleteMany({
+      date: { $regex: `^${month}` }
+    });
+    
+    // Remove daily summaries for the month
+    await this.db.collection('daily_summaries').deleteMany({
+      date: { $regex: `^${month}` }
+    });
+    
+    // Remove weekly summaries that fall within the month
+    await this.db.collection('weekly_summaries').deleteMany({
+      weekStart: { $regex: `^${month}` }
+    });
+    
+    // Remove monthly summary
+    await this.db.collection('monthly_summaries').deleteOne({ month });
+  }
+
+  private async recalculateWeeklySummary(date: string): Promise<void> {
+    const weekStart = this.getWeekStart(new Date(date));
+    const weekEnd = this.getWeekEnd(new Date(date));
+    
+    const weekTransactions = await this.db.collection('transactions')
+      .find({ date: { $gte: weekStart, $lte: weekEnd } })
+      .toArray();
+    
+    // Remove existing weekly summary
+    await this.db.collection('weekly_summaries').deleteOne({ weekStart });
+    
+    if (weekTransactions.length === 0) {
+      return;
+    }
+    
+    const totalAmount = weekTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const gpayAmount = weekTransactions
+      .filter(t => t.paymentMethod === 'gpay')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const cashAmount = weekTransactions
+      .filter(t => t.paymentMethod === 'cash')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    
+    await this.createWeeklySummary({
+      weekStart,
+      weekEnd,
+      totalAmount: totalAmount.toFixed(2),
+      gpayAmount: gpayAmount.toFixed(2),
+      cashAmount: cashAmount.toFixed(2),
+      orderCount: weekTransactions.length,
+    });
+  }
+
+  private async recalculateMonthlySummary(date: string): Promise<void> {
+    const month = date.substring(0, 7);
+    
+    const monthTransactions = await this.db.collection('transactions')
+      .find({ date: { $regex: `^${month}` } })
+      .toArray();
+    
+    // Remove existing monthly summary
+    await this.db.collection('monthly_summaries').deleteOne({ month });
+    
+    if (monthTransactions.length === 0) {
+      return;
+    }
+    
+    const totalAmount = monthTransactions.reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const gpayAmount = monthTransactions
+      .filter(t => t.paymentMethod === 'gpay')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    const cashAmount = monthTransactions
+      .filter(t => t.paymentMethod === 'cash')
+      .reduce((sum, t) => sum + parseFloat(t.totalAmount), 0);
+    
+    await this.createMonthlySummary({
+      month,
+      totalAmount: totalAmount.toFixed(2),
+      gpayAmount: gpayAmount.toFixed(2),
+      cashAmount: cashAmount.toFixed(2),
+      orderCount: monthTransactions.length,
+    });
   }
 }
 
