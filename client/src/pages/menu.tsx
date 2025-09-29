@@ -1,12 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ShoppingCart, Plus, Minus, BarChart3, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { MenuItem, CartItem } from "@shared/schema";
-
-const categories = ["All Items", "Tea", "Coffee", "Snacks", "Beverages"];
 
 export default function MenuPage() {
   const [, navigate] = useLocation();
@@ -17,8 +15,13 @@ export default function MenuPage() {
     queryKey: ["/api/menu"],
   });
 
-  const filteredItems = selectedCategory === "All Items" 
-    ? menuItems 
+  const categories = useMemo(() => {
+    const uniqueCategories = Array.from(new Set(menuItems.map(item => item.category)));
+    return ["All Items", ...uniqueCategories.sort()];
+  }, [menuItems]);
+
+  const filteredItems = selectedCategory === "All Items"
+    ? menuItems
     : menuItems.filter(item => item.category === selectedCategory);
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -217,7 +220,7 @@ export default function MenuPage() {
             />
             <div className="text-center">
               <p className="text-sm text-muted-foreground">Powered by</p>
-              <p className="font-semibold text-primary">Innowara</p>
+              <p className="font-semibold text-primary">Inowara</p>
               <p className="text-xs text-muted-foreground">IT Solutions - Web & Mobile Apps</p>
             </div>
           </div>

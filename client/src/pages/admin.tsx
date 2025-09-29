@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { Plus, Edit, Trash2, Save, X, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import type { MenuItem, InsertMenuItem } from "@shared/schema";
 
 interface EditingMenuItem extends Partial<MenuItem> {
@@ -27,6 +28,7 @@ export default function AdminPage() {
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const { data: menuItems = [], isLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu"],
@@ -132,14 +134,24 @@ export default function AdminPage() {
             <h1 className="text-3xl font-bold text-secondary">Admin Panel</h1>
             <p className="text-muted-foreground">Manage menu items and operations</p>
           </div>
-          <Button
-            onClick={() => setIsAddingNew(true)}
-            className="bg-primary text-primary-foreground"
-            disabled={isAddingNew}
-          >
-            <Plus className="mr-2" size={20} />
-            Add New Item
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => navigate("/dashboard")}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <BarChart3 size={20} />
+              Dashboard
+            </Button>
+            <Button
+              onClick={() => setIsAddingNew(true)}
+              className="bg-primary text-primary-foreground"
+              disabled={isAddingNew}
+            >
+              <Plus className="mr-2" size={20} />
+              Add New Item
+            </Button>
+          </div>
         </div>
 
         {/* Add New Item Form */}

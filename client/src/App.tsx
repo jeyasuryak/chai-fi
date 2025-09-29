@@ -9,7 +9,7 @@ import LoginPage from "@/pages/login";
 import MenuPage from "@/pages/menu";
 import SearchPage from "@/pages/search";
 import PaymentPage from "@/pages/payment";
-import CreditorPage from "@/pages/creditor";
+
 import InvoicePage from "@/pages/invoice";
 import DashboardPage from "@/pages/dashboard";
 import AdminPage from "@/pages/admin";
@@ -23,7 +23,7 @@ function Router() {
       <Route path="/menu" component={MenuPage} />
       <Route path="/search" component={SearchPage} />
       <Route path="/payment" component={PaymentPage} />
-      <Route path="/creditor" component={CreditorPage} />
+
       <Route path="/invoice" component={InvoicePage} />
       <Route path="/dashboard" component={DashboardPage} />
       <Route component={NotFound} />

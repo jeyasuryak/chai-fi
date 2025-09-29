@@ -23,11 +23,10 @@ export const transactions = pgTable("transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   items: jsonb("items").notNull(), // Array of {id, name, price, quantity}
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: text("payment_method").notNull(), // 'gpay', 'cash', 'split', or 'creditor'
+  paymentMethod: text("payment_method").notNull(), // 'gpay', 'cash', or 'split'
   billerName: text("biller_name").notNull().default('Sriram'),
   splitPayment: jsonb("split_payment"), // {gpayAmount: number, cashAmount: number} for split payments
   extras: jsonb("extras"), // Array of {name: string, amount: number}
-  creditor: jsonb("creditor"), // {name: string, paidAmount: number, balanceAmount: number, totalAmount: number}
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   date: text("date").notNull(), // YYYY-MM-DD format
   dayName: text("day_name").notNull(),

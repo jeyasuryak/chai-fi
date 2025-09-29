@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, IndianRupee, Receipt, Trash2, Users, TrendingUp, BarChart3, ArrowLeft, Menu } from "lucide-react";
+import { Download, IndianRupee, Receipt, Trash2, TrendingUp, BarChart3, ArrowLeft, Menu, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from "recharts";
@@ -13,10 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import type { DailySummary, WeeklySummary, MonthlySummary } from "@shared/schema";
 
-type CreditorSummary = {
-  name: string;
-  totalAmount: number;
-};
+
 
 type MenuItemSales = {
   name: string;
@@ -27,6 +25,7 @@ export default function DashboardPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"today" | "week" | "month">("today");
   const [clearPeriod, setClearPeriod] = useState<"day" | "week" | "month">("day");
   const [chartType, setChartType] = useState<"bar" | "pie">("bar");
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -43,9 +42,7 @@ export default function DashboardPage() {
     queryKey: ["/api/summaries/monthly"],
   });
 
-  const { data: creditorSummary = [], isLoading: creditorSummaryLoading, error: creditorSummaryError } = useQuery<CreditorSummary[]>({
-    queryKey: ["/api/creditors/summary"],
-  });
+
 
   const today = new Date().toISOString().split('T')[0];
   const { data: menuItemSales = [], isLoading: menuItemSalesLoading, error: menuItemSalesError } = useQuery<any[]>({
@@ -56,8 +53,7 @@ export default function DashboardPage() {
   const currentWeek = weeklySummaries[0];
   const currentMonth = monthlySummaries[0];
 
-  // Calculate total creditor balance
-  const totalCreditorBalance = creditorSummary.reduce((sum, creditor) => sum + creditor.totalAmount, 0);
+
 
   // Prepare chart data with colors
   const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ff0000', '#0000ff', '#ffff00'];
@@ -110,7 +106,6 @@ export default function DashboardPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/summaries/daily"] });
         queryClient.invalidateQueries({ queryKey: ["/api/summaries/weekly"] });
         queryClient.invalidateQueries({ queryKey: ["/api/summaries/monthly"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/creditors/summary"] });
         queryClient.invalidateQueries({ queryKey: ["/api/menu/sales"] });
       } else {
         const error = await response.json();
@@ -191,6 +186,8 @@ export default function DashboardPage() {
     }
   };
 
+
+
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-7xl mx-auto">
@@ -205,6 +202,7 @@ export default function DashboardPage() {
               <ArrowLeft className="mr-2" size={16} />
               Back to Menu
             </Button>
+           
             <div>
               <h1 className="text-3xl font-bold text-secondary" data-testid="dashboard-title">Dashboard</h1>
               <p className="text-muted-foreground" data-testid="dashboard-subtitle">Transaction summaries and analytics</p>
@@ -274,7 +272,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
@@ -340,64 +338,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Creditor Summary */}
-        <div className="mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-secondary">Creditor Summary</h2>
-                <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
-                  <Users className="text-red-600 text-xl" />
-                </div>
-              </div>
-              
-              {creditorSummaryLoading ? (
-                <div className="text-center py-4">Loading creditor data...</div>
-              ) : creditorSummaryError ? (
-                <div className="text-center py-4 text-red-600">Error loading creditor data</div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center p-4 bg-red-50 rounded-lg border border-red-200">
-                    <div>
-                      <div className="font-medium text-red-700">Total Outstanding</div>
-                      <div className="text-sm text-red-600">
-                        {creditorSummary?.length || 0} creditors
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-red-800">
-                        ₹{creditorSummary?.reduce((sum, creditor) => sum + creditor.totalAmount, 0).toFixed(2) || "0.00"}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {creditorSummary && creditorSummary.length > 0 && (
-                    <div className="max-h-48 overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-2">Creditor</th>
-                            <th className="text-right py-2">Amount Due</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {creditorSummary.map((creditor, index) => (
-                            <tr key={index} className="border-b border-gray-100">
-                              <td className="py-2">{creditor.name}</td>
-                              <td className="text-right py-2 font-medium text-red-600">
-                                ₹{creditor.totalAmount.toFixed(2)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+
 
         {/* Transaction Summary */}
         <div className="grid lg:grid-cols-2 gap-8 mb-8">
@@ -774,25 +715,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* MongoDB Connection Info */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
-          <div className="flex items-start space-x-3">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <span className="text-blue-600 font-bold">DB</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-blue-900 mb-2" data-testid="mongodb-title">MongoDB Atlas Integration</h3>
-              <p className="text-blue-800 text-sm mb-3" data-testid="mongodb-description">
-                All transactions are automatically stored in MongoDB Atlas for reliable data persistence and analytics.
-              </p>
-              <div className="text-xs text-blue-700" data-testid="mongodb-instructions">
-                <strong>Setup Instructions:</strong> Configure your MongoDB Atlas connection string in the environment variables. 
-                All daily, weekly, and monthly summaries are generated from real transaction data.
-              </div>
-            </div>
-          </div>
-        </div>
-
+       
         {/* Powered by Innowara */}
         <div className="mt-8 flex justify-center items-center">
           <div className="bg-white rounded-xl shadow-sm border border-border p-4 flex items-center gap-3">
@@ -807,7 +730,7 @@ export default function DashboardPage() {
             />
             <div className="text-center">
               <p className="text-sm text-muted-foreground">Powered by</p>
-              <p className="font-semibold text-primary">Innowara</p>
+              <p className="font-semibold text-primary">Inowara</p>
               <p className="text-xs text-muted-foreground">IT Solutions - Web & Mobile Apps</p>
             </div>
           </div>

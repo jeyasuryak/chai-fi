@@ -9,6 +9,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
+      
+      // Wait for storage to be initialized
+      if (!storage) {
+        return res.status(503).json({ error: "Service temporarily unavailable" });
+      }
+      
       const user = await storage.getUserByUsername(username);
       
       if (!user || user.password !== password) {
@@ -17,6 +23,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ user: { id: user.id, username: user.username } });
     } catch (error) {
+      console.error("Login error:", error);
       res.status(500).json({ error: "Login failed" });
     }
   });
@@ -204,41 +211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Creditor summary endpoint
-  app.get("/api/creditors/summary", async (req, res) => {
-    try {
-      const transactions = await storage.getTransactions();
-      const creditorTransactions = transactions.filter(t => 
-        t.paymentMethod === 'creditor' && t.creditor
-      );
-      
-      const creditorSummary = creditorTransactions.reduce((acc: any, transaction) => {
-        const creditor = transaction.creditor as any;
-        if (!creditor || !creditor.name) return acc;
-        
-        if (!acc[creditor.name]) {
-          acc[creditor.name] = {
-            name: creditor.name,
-            totalAmount: 0,
-            paidAmount: 0,
-            balanceAmount: 0,
-            transactionCount: 0
-          };
-        }
-        
-        acc[creditor.name].totalAmount += creditor.totalAmount || 0;
-        acc[creditor.name].paidAmount += creditor.paidAmount || 0;
-        acc[creditor.name].balanceAmount += creditor.balanceAmount || 0;
-        acc[creditor.name].transactionCount += 1;
-        
-        return acc;
-      }, {});
-      
-      res.json(Object.values(creditorSummary));
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch creditor summary" });
-    }
-  });
+
 
 
 

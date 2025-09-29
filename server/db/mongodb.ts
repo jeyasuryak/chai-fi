@@ -58,9 +58,9 @@ export class MongoStorage implements IStorage {
 
   private async initializeDefaultData(): Promise<void> {
     // Create default users if they don't exist
-    const existingAdmin = await this.users.findOne({ username: "Inowara" });
+    const existingAdmin = await this.users.findOne({ username: "admin" });
     if (!existingAdmin) {
-      await this.createUser({ username: "Inowara", password: "Inowara@2025" }); // Admin user
+      await this.createUser({ username: "admin", password: "admin@2020" }); // Admin user
     }
     
     const existingUser = await this.users.findOne({ username: "Chai-fi" });

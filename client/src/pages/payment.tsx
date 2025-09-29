@@ -374,14 +374,6 @@ export default function PaymentPage() {
                   {isProcessing ? "Processing..." : "Complete Payment"}
                 </Button>
 
-                <Button 
-                  onClick={() => navigate("/creditor")}
-                  variant="outline"
-                  className="w-full py-4 rounded-lg font-semibold text-lg border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
-                  data-testid="button-creditor"
-                >
-                  Record as Creditor Sale
-                </Button>
               </div>
             </CardContent>
           </Card>

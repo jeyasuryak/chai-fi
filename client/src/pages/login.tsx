@@ -35,7 +35,7 @@ export default function LoginPage() {
       });
       
       // Redirect based on user type
-      if (data.user.username === "Inowara") {
+      if (data.user.username === "admin") {
         navigate("/admin");
       } else {
         navigate("/menu");
@@ -55,6 +55,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-muted flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardContent className="pt-6">
+          
           <div className="text-center mb-8">
             <div className="w-16 h-16 mx-auto mb-4 bg-primary rounded-full flex items-center justify-center">
               <Coffee className="text-2xl text-primary-foreground" size={32} />
