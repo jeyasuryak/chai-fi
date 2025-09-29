@@ -46,7 +46,7 @@ export default function DashboardPage() {
 
   const today = new Date().toISOString().split('T')[0];
   const { data: menuItemSales = [], isLoading: menuItemSalesLoading, error: menuItemSalesError } = useQuery<MenuItemSales[]>({
-    queryKey: ["/api/menu-items/sales"],
+    queryKey: ["/api/menu/sales"],
   });
 
   const todaySummary = dailySummaries.find(s => s.date === today);
@@ -100,7 +100,7 @@ export default function DashboardPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/summaries/weekly"] });
         queryClient.invalidateQueries({ queryKey: ["/api/summaries/monthly"] });
         queryClient.invalidateQueries({ queryKey: ["/api/creditors/summary"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/menu-items/sales"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/menu/sales"] });
       } else {
         const error = await response.json();
         toast({
